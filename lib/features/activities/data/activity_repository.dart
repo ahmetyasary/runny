@@ -191,6 +191,34 @@ class ActivityRepository {
     return (totalKm: km, count: rows.length, avgPace: avgPace);
   }
 
+  /// Bu haftanın spor bazlı ilerlemesi: type -> (km, seans).
+  Future<Map<String, ({double km, int count})>> fetchWeeklySportProgress() async {
+    final user = client.auth.currentUser;
+    if (user == null) return const {};
+
+    final now = DateTime.now();
+    final weekStart = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+
+    final rows = await client
+        .from('activities')
+        .select('type, distance_meters, started_at')
+        .eq('user_id', user.id)
+        .gte('started_at', weekStart.toUtc().toIso8601String());
+
+    final progress = <String, ({double km, int count})>{};
+    for (final row in rows) {
+      final type = row['type'] as String? ?? 'run';
+      final km = ((row['distance_meters'] as num?)?.toDouble() ?? 0) / 1000;
+      final previous = progress[type];
+      progress[type] = (
+        km: (previous?.km ?? 0) + km,
+        count: (previous?.count ?? 0) + 1,
+      );
+    }
+    return progress;
+  }
+
   String _databaseType(String type) => switch (type) {
         'Koşu' => 'run',
         'Yürüyüş' => 'walk',

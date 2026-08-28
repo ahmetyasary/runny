@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/config/supabase_config.dart';
 import '../../../core/models/profile.dart';
 import '../../../core/models/profile_options.dart';
+import '../../../core/models/sport_goal.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/profile_repository.dart';
 
@@ -26,6 +27,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late final TextEditingController _bioController;
   late Set<String> _sports;
   late Set<String> _equipment;
+  final Map<String, TextEditingController> _goalControllers = {};
   bool _isLoading = false;
   String? _error;
 
@@ -43,6 +45,48 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _bioController = TextEditingController(text: profile.bio ?? '');
     _sports = {...profile.sports};
     _equipment = {...profile.equipment};
+    for (final id in _sports) {
+      _ensureGoalController(id, profile.sportGoals[id]);
+    }
+  }
+
+  void _ensureGoalController(String sportId, [SportGoal? goal]) {
+    if (_goalControllers.containsKey(sportId)) return;
+    final sport = sportById(sportId);
+    final text = sport == null || sport.usesDistance
+        ? (goal?.weeklyKm?.toString() ?? '')
+        : (goal?.weeklyCount?.toString() ?? '');
+    _goalControllers[sportId] = TextEditingController(text: text);
+  }
+
+  void _disposeUnusedGoalControllers() {
+    final removable = _goalControllers.keys
+        .where((id) => !_sports.contains(id))
+        .toList();
+    for (final id in removable) {
+      _goalControllers.remove(id)?.dispose();
+    }
+  }
+
+  Map<String, SportGoal> _collectGoals() {
+    final goals = <String, SportGoal>{};
+    for (final id in _sports) {
+      final sport = sportById(id);
+      final raw = _goalControllers[id]?.text.trim() ?? '';
+      if (raw.isEmpty) continue;
+      if (sport == null || sport.usesDistance) {
+        final km = double.tryParse(raw.replaceAll(',', '.'));
+        if (km != null && km > 0) {
+          goals[id] = SportGoal(weeklyKm: km);
+        }
+      } else {
+        final count = int.tryParse(raw);
+        if (count != null && count > 0) {
+          goals[id] = SportGoal(weeklyCount: count);
+        }
+      }
+    }
+    return goals;
   }
 
   @override
@@ -53,11 +97,18 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _ageController.dispose();
     _locationController.dispose();
     _bioController.dispose();
+    for (final controller in _goalControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final selectedSports = profileSportOptions
+        .where((sport) => _sports.contains(sport.id))
+        .toList();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profili düzenle'),
@@ -141,15 +192,44 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     setState(() {
                       if (selected) {
                         _sports.add(sport.id);
+                        _ensureGoalController(sport.id);
                       } else {
                         _sports.remove(sport.id);
+                        _disposeUnusedGoalControllers();
                       }
                     });
                   },
                 ),
             ],
           ),
-          const SizedBox(height: 24),
+          if (selectedSports.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            const _Label('Haftalık hedefler'),
+            const SizedBox(height: 6),
+            const Text(
+              'Seçtiğin sporlar için bu haftanın hedefini yaz.',
+              style: TextStyle(color: AppColors.mutedInk, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            for (final sport in selectedSports) ...[
+              TextField(
+                controller: _goalControllers[sport.id],
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                ],
+                decoration: InputDecoration(
+                  labelText: sport.usesDistance
+                      ? '${sport.label} — haftalık km'
+                      : '${sport.label} — haftalık seans',
+                  prefixIcon: Icon(sport.icon, color: sport.color),
+                  suffixText: sport.usesDistance ? 'km' : 'seans',
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ],
+          const SizedBox(height: 14),
           const _Label('Ekipmanlarım'),
           const SizedBox(height: 10),
           Wrap(
@@ -195,9 +275,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   Future<void> _save() async {
+    final goals = _collectGoals();
     final client = SupabaseService.client;
     if (client == null) {
-      // Demo modunda sadece geri dön
       final age = int.tryParse(_ageController.text.trim());
       Navigator.pop(
         context,
@@ -210,6 +290,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           bio: _bioController.text,
           sports: _sports.toList(),
           equipment: _equipment.toList(),
+          sportGoals: goals,
         ),
       );
       return;
@@ -236,6 +317,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         location: _locationController.text,
         sports: _sports.toList(),
         equipment: _equipment.toList(),
+        sportGoals: goals,
       );
       if (!mounted) return;
       Navigator.pop(context, updated);

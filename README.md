@@ -31,6 +31,8 @@ E-posta doğrulama şablonu ve Site URL ayarı: `supabase/email_templates/SETUP.
 
 Profil detay alanları için SQL: `supabase/migrations/002_profile_details.sql`
 
+Spor hedefleri için SQL: `supabase/migrations/005_sport_goals.sql`
+
 ## Kontroller
 
 ```bash

@@ -4,8 +4,10 @@ import '../../../core/config/supabase_config.dart';
 import '../../../core/models/activity.dart';
 import '../../../core/models/profile.dart';
 import '../../../core/models/profile_options.dart';
+import '../../../core/models/sport_goal.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/route_preview.dart';
+import '../../activities/data/activity_repository.dart';
 import '../../activities/presentation/activity_history_controller.dart';
 import '../data/profile_repository.dart';
 import 'edit_profile_page.dart';
@@ -19,6 +21,7 @@ class ProfilePage extends StatefulWidget {
 
 class ProfilePageState extends State<ProfilePage> {
   Profile? _profile;
+  Map<String, ({double km, int count})> _weeklyProgress = const {};
   bool _loading = true;
   String? _error;
 
@@ -68,11 +71,19 @@ class ProfilePageState extends State<ProfilePage> {
     }
 
     try {
-      final profile = await ProfileRepository(client).fetchCurrent();
+      final repo = ProfileRepository(client);
+      final activities = ActivityRepository(client);
+      final results = await Future.wait([
+        repo.fetchCurrent(),
+        activities.fetchWeeklySportProgress(),
+      ]);
       await historyFuture;
       if (!mounted) return;
+      final profile = results[0] as Profile?;
       setState(() {
         _profile = profile;
+        _weeklyProgress =
+            results[1] as Map<String, ({double km, int count})>;
         _loading = false;
         _error = profile == null
             ? 'Profil kaydı bulunamadı. Çıkış yapıp tekrar giriş dene.'
@@ -188,6 +199,27 @@ class ProfilePageState extends State<ProfilePage> {
                         label: sportById(id)!.label,
                       ),
                 ],
+              ),
+            ),
+          ),
+          SoftWrapToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 8),
+              child: _SectionTitle(
+                title: 'Haftalık hedefler',
+                actionLabel: 'Düzenle',
+                onAction: () => _openEdit(profile),
+              ),
+            ),
+          ),
+          SoftWrapToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: _GoalsSection(
+                sports: profile.sports,
+                goals: profile.sportGoals,
+                progress: _weeklyProgress,
+                onEdit: () => _openEdit(profile),
               ),
             ),
           ),
@@ -495,6 +527,188 @@ class _SectionTitle extends StatelessWidget {
                   child: Text(actionLabel!),
                 ),
       ],
+    );
+  }
+}
+
+class _GoalsSection extends StatelessWidget {
+  const _GoalsSection({
+    required this.sports,
+    required this.goals,
+    required this.progress,
+    required this.onEdit,
+  });
+
+  final List<String> sports;
+  final Map<String, SportGoal> goals;
+  final Map<String, ({double km, int count})> progress;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    if (sports.isEmpty) {
+      return _EmptyGoals(
+        text: 'Önce spor seç, sonra hedef belirle.',
+        onEdit: onEdit,
+      );
+    }
+
+    final cards = <Widget>[];
+    for (final id in sports) {
+      final sport = sportById(id);
+      if (sport == null) continue;
+      final goal = goals[id];
+      final done = progress[id];
+      cards.add(
+        _GoalCard(
+          sport: sport,
+          goal: goal,
+          doneKm: done?.km ?? 0,
+          doneCount: done?.count ?? 0,
+        ),
+      );
+    }
+
+    if (cards.isEmpty) {
+      return _EmptyGoals(
+        text: 'Henüz hedef yok — düzenle’den haftalık hedef yaz.',
+        onEdit: onEdit,
+      );
+    }
+
+    return Column(
+      children: [
+        for (var i = 0; i < cards.length; i++) ...[
+          if (i > 0) const SizedBox(height: 10),
+          cards[i],
+        ],
+      ],
+    );
+  }
+}
+
+class _EmptyGoals extends StatelessWidget {
+  const _EmptyGoals({required this.text, required this.onEdit});
+
+  final String text;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            text,
+            style: const TextStyle(color: AppColors.mutedInk, fontSize: 13),
+          ),
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: onEdit,
+            child: const Text('Hedef ekle'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GoalCard extends StatelessWidget {
+  const _GoalCard({
+    required this.sport,
+    required this.goal,
+    required this.doneKm,
+    required this.doneCount,
+  });
+
+  final SportOption sport;
+  final SportGoal? goal;
+  final double doneKm;
+  final int doneCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasGoal = goal?.hasTarget == true;
+    final useDistance = sport.usesDistance && (goal?.weeklyKm != null);
+    final target = useDistance
+        ? (goal?.weeklyKm ?? 0)
+        : (goal?.weeklyCount ?? 0).toDouble();
+    final current = useDistance ? doneKm : doneCount.toDouble();
+    final progress = !hasGoal || target <= 0
+        ? 0.0
+        : (current / target).clamp(0.0, 1.0);
+
+    final subtitle = !hasGoal
+        ? 'Hedef girilmedi'
+        : useDistance
+            ? '${doneKm.toStringAsFixed(1)} / ${goal!.weeklyKm!.toStringAsFixed(goal!.weeklyKm! == goal!.weeklyKm!.roundToDouble() ? 0 : 1)} km'
+            : '$doneCount / ${goal!.weeklyCount} seans';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: sport.color.withValues(alpha: .14),
+                child: Icon(sport.icon, size: 16, color: sport.color),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  sport.label,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              Text(
+                hasGoal ? '%${(progress * 100).round()}' : '—',
+                style: TextStyle(
+                  color: hasGoal ? sport.color : AppColors.mutedInk,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            style: const TextStyle(color: AppColors.mutedInk, fontSize: 12),
+          ),
+          if (hasGoal) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 8,
+                backgroundColor: AppColors.line,
+                valueColor: AlwaysStoppedAnimation(sport.color),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

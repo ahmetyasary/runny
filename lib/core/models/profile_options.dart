@@ -6,12 +6,16 @@ class SportOption {
     required this.label,
     required this.icon,
     required this.color,
+    this.usesDistance = true,
   });
 
   final String id;
   final String label;
   final IconData icon;
   final Color color;
+
+  /// Mesafe (km) hedefi mi, seans hedefi mi.
+  final bool usesDistance;
 }
 
 class EquipmentOption {
@@ -68,12 +72,14 @@ const profileSportOptions = [
     label: 'Fitness',
     icon: Icons.fitness_center_rounded,
     color: Color(0xFFE15B64),
+    usesDistance: false,
   ),
   SportOption(
     id: 'yoga',
     label: 'Yoga',
     icon: Icons.self_improvement_rounded,
     color: Color(0xFF6D62C5),
+    usesDistance: false,
   ),
 ];
 

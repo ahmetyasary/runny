@@ -12,6 +12,7 @@ create table if not exists public.profiles (
   location text,
   sports text[] not null default '{}',
   equipment text[] not null default '{}',
+  sport_goals jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 

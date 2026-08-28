@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/profile.dart';
+import '../../../core/models/sport_goal.dart';
 
 class ProfileRepository {
   const ProfileRepository(this.client);
@@ -51,6 +52,7 @@ class ProfileRepository {
     String? location,
     List<String> sports = const [],
     List<String> equipment = const [],
+    Map<String, SportGoal> sportGoals = const {},
   }) async {
     final user = client.auth.currentUser;
     if (user == null) {
@@ -63,6 +65,11 @@ class ProfileRepository {
       throw ArgumentError('Nickname en az 3 karakter olmalı (a-z, 0-9, _).');
     }
 
+    final filteredGoals = <String, SportGoal>{
+      for (final id in sports)
+        if (sportGoals[id]?.hasTarget == true) id: sportGoals[id]!,
+    };
+
     final row = await client
         .from('profiles')
         .update({
@@ -74,6 +81,7 @@ class ProfileRepository {
           'location': _nullable(location),
           'sports': sports,
           'equipment': equipment,
+          'sport_goals': SportGoal.mapToJson(filteredGoals),
         })
         .eq('id', user.id)
         .select()

@@ -1,3 +1,5 @@
+import 'sport_goal.dart';
+
 class Profile {
   const Profile({
     required this.id,
@@ -10,6 +12,7 @@ class Profile {
     this.location,
     this.sports = const [],
     this.equipment = const [],
+    this.sportGoals = const {},
     this.activityCount = 0,
     this.followerCount = 0,
     this.followingCount = 0,
@@ -25,6 +28,7 @@ class Profile {
   final String? location;
   final List<String> sports;
   final List<String> equipment;
+  final Map<String, SportGoal> sportGoals;
   final int activityCount;
   final int followerCount;
   final int followingCount;
@@ -56,6 +60,7 @@ class Profile {
     String? location,
     List<String>? sports,
     List<String>? equipment,
+    Map<String, SportGoal>? sportGoals,
     int? activityCount,
     int? followerCount,
     int? followingCount,
@@ -71,6 +76,7 @@ class Profile {
       location: location ?? this.location,
       sports: sports ?? this.sports,
       equipment: equipment ?? this.equipment,
+      sportGoals: sportGoals ?? this.sportGoals,
       activityCount: activityCount ?? this.activityCount,
       followerCount: followerCount ?? this.followerCount,
       followingCount: followingCount ?? this.followingCount,
@@ -89,6 +95,7 @@ class Profile {
       location: json['location'] as String?,
       sports: _stringList(json['sports']),
       equipment: _stringList(json['equipment']),
+      sportGoals: SportGoal.mapFromJson(json['sport_goals']),
       activityCount: (json['activity_count'] as num?)?.toInt() ?? 0,
       followerCount: (json['follower_count'] as num?)?.toInt() ?? 0,
       followingCount: (json['following_count'] as num?)?.toInt() ?? 0,
