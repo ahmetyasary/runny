@@ -10,6 +10,7 @@ import '../../activities/presentation/floating_activity_bubble.dart';
 import '../../discover/presentation/discover_page.dart';
 import '../../feed/presentation/feed_page.dart';
 import '../../profile/presentation/profile_page.dart';
+import '../../watch/presentation/watch_session_sync.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -25,17 +26,21 @@ class _HomeShellState extends State<HomeShell> {
   final _feedKey = GlobalKey<FeedPageState>();
   final _discoverKey = GlobalKey<DiscoverPageState>();
   final _profileKey = GlobalKey<ProfilePageState>();
+  late final WatchSessionSync _watchSync;
 
   @override
   void initState() {
     super.initState();
     _session.addListener(_onSessionChanged);
+    _watchSync = WatchSessionSync(_session);
+    _watchSync.start();
     _history.refresh();
   }
 
   @override
   void dispose() {
     _session.removeListener(_onSessionChanged);
+    _watchSync.dispose();
     _session.dispose();
     _history.dispose();
     super.dispose();
@@ -59,6 +64,7 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Future<void> _completeActivity(ActivityStopResult result) async {
+    await _watchSync.notifyStopped();
     _history.addCompleted(
       id: result.localId,
       typeLabel: result.typeLabel,
@@ -239,7 +245,11 @@ class _HomeShellState extends State<HomeShell> {
           onCompleted: _completeActivity,
         ),
       ),
-    );
+    ).then((_) {
+      if (_session.isRecording) {
+        _watchSync.notifyStarted();
+      }
+    });
   }
 }
 

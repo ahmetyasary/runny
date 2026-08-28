@@ -9,6 +9,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/route_preview.dart';
 import '../../activities/data/activity_repository.dart';
 import '../../activities/presentation/activity_history_controller.dart';
+import '../../watch/presentation/watch_status_page.dart';
 import '../data/profile_repository.dart';
 import 'edit_profile_page.dart';
 
@@ -314,6 +315,18 @@ class ProfilePageState extends State<ProfilePage> {
               onTap: () {
                 Navigator.pop(context);
                 if (_profile != null) _openEdit(_profile!);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.watch_rounded),
+              title: const Text('Apple Watch'),
+              subtitle: const Text('Saat bağlantısı ve durum'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const WatchStatusPage()),
+                );
               },
             ),
             if (SupabaseService.client != null)

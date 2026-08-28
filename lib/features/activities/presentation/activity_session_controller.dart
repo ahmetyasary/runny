@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../core/config/supabase_config.dart';
+import '../../watch/data/watch_bridge.dart';
 import '../data/activity_repository.dart';
 
 class ActivityStopResult {
@@ -94,6 +95,13 @@ class ActivitySessionController extends ChangeNotifier {
     });
 
     notifyListeners();
+    await WatchBridge.sendSessionUpdate(
+      action: 'start',
+      activityType: type,
+      elapsedSeconds: 0,
+      distanceMeters: 0,
+      isRecording: true,
+    );
     return true;
   }
 
@@ -151,6 +159,14 @@ class ActivitySessionController extends ChangeNotifier {
     elapsed = Duration.zero;
     isMinimized = false;
     notifyListeners();
+
+    await WatchBridge.sendSessionUpdate(
+      action: 'stop',
+      activityType: typeLabel,
+      elapsedSeconds: duration.inSeconds,
+      distanceMeters: distance,
+      isRecording: false,
+    );
 
     return ActivityStopResult(
       message: message,

@@ -33,6 +33,18 @@ Profil detay alanları için SQL: `supabase/migrations/002_profile_details.sql`
 
 Spor hedefleri için SQL: `supabase/migrations/005_sport_goals.sql`
 
+## Saat desteği (Apple Watch)
+
+Faz 1 iskeleti hazır:
+
+- Flutter köprüsü: `lib/features/watch/`
+- iOS WatchConnectivity: `ios/Runner/AppDelegate.swift`
+- watchOS SwiftUI kaynakları: `ios/RunnyWatch/`
+
+Watch target’ı Xcode’da bir kez eklemen gerekir: `ios/RunnyWatch/SETUP.md`
+
+Uygulamada: **Profil → ⚙️ → Apple Watch**
+
 ## Kontroller
 
 ```bash
