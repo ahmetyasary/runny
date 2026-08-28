@@ -16,10 +16,10 @@ class FeedPage extends StatefulWidget {
   const FeedPage({super.key});
 
   @override
-  State<FeedPage> createState() => _FeedPageState();
+  State<FeedPage> createState() => FeedPageState();
 }
 
-class _FeedPageState extends State<FeedPage> {
+class FeedPageState extends State<FeedPage> {
   Profile? _profile;
   List<Activity> _activities = demoActivities;
   bool _loading = true;
@@ -27,12 +27,13 @@ class _FeedPageState extends State<FeedPage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    refresh();
   }
 
-  Future<void> _load() async {
+  Future<void> refresh({bool silent = false}) async {
     final client = SupabaseService.client;
     if (client == null || client.auth.currentUser == null) {
+      if (!mounted) return;
       setState(() {
         _profile = const Profile(
           id: 'demo',
@@ -45,7 +46,9 @@ class _FeedPageState extends State<FeedPage> {
       return;
     }
 
-    setState(() => _loading = true);
+    if (!silent || _profile == null) {
+      setState(() => _loading = true);
+    }
     try {
       final profile = await ProfileRepository(client).fetchCurrent();
       final feed = await ActivityRepository(client).fetchFeed();
@@ -112,7 +115,7 @@ class _FeedPageState extends State<FeedPage> {
     final firstName = (_profile?.name ?? 'koşucu').split(' ').first;
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: refresh,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
@@ -183,7 +186,7 @@ class _FeedPageState extends State<FeedPage> {
                     ),
                   ),
                   TextButton(
-                    onPressed: _load,
+                    onPressed: refresh,
                     child: const Text('Yenile'),
                   ),
                 ],

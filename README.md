@@ -13,29 +13,17 @@ Runny, spor aktivitelerini kaydetmeyi ve rotaları sosyal olarak paylaşmayı sa
 
 ## Supabase bağlama
 
-1. Ortam dosyasını oluştur:
+Varsayılan bağlantı `assets/config/app.env` içinden okunur — düz `flutter run` yeterlidir.
 
-```bash
-cp .env.example .env
-```
-
-2. `.env` içine URL ve publishable key değerlerini yaz (`.env` git’e girmez).
-
-Alternatif: `supabase/config.local.example.json` → `supabase/config.local.json`
-
-3. SQL Editor’da `supabase/schema.sql` içeriğini çalıştır.
-
-4. Uygulamayı başlat:
+İsteğe bağlı override:
 
 ```bash
 flutter run --dart-define-from-file=.env
 ```
 
-veya:
+veya yerel `.env` / `supabase/config.local.json` dosyaları (git’e girmez).
 
-```bash
-flutter run --dart-define-from-file=supabase/config.local.json
-```
+SQL Editor’da `supabase/schema.sql` içeriğini çalıştır.
 
 Google ve Apple girişleri için Dashboard → Authentication → Providers ayarını ayrıca açman gerekir.
 

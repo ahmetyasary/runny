@@ -46,7 +46,7 @@ class DiscoverPageState extends State<DiscoverPage> {
     super.dispose();
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool silent = false}) async {
     final client = SupabaseService.client;
     if (client == null || client.auth.currentUser == null) {
       if (!mounted) return;
@@ -59,10 +59,14 @@ class DiscoverPageState extends State<DiscoverPage> {
       return;
     }
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (!silent || (_routes.isEmpty && _suggested.isEmpty)) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    } else {
+      setState(() => _error = null);
+    }
 
     try {
       final social = SocialRepository(client);

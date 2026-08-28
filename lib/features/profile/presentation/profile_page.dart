@@ -29,7 +29,7 @@ class ProfilePageState extends State<ProfilePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => refresh());
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool silent = false}) async {
     final history = ActivityHistoryScope.maybeOf(context);
     final historyFuture = history?.refresh();
 
@@ -58,10 +58,14 @@ class ProfilePageState extends State<ProfilePage> {
       return;
     }
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (!silent || _profile == null) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    } else {
+      setState(() => _error = null);
+    }
 
     try {
       final profile = await ProfileRepository(client).fetchCurrent();

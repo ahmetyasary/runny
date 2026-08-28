@@ -22,6 +22,7 @@ class _HomeShellState extends State<HomeShell> {
   int _selectedIndex = 0;
   final _session = ActivitySessionController();
   final _history = ActivityHistoryController();
+  final _feedKey = GlobalKey<FeedPageState>();
   final _discoverKey = GlobalKey<DiscoverPageState>();
   final _profileKey = GlobalKey<ProfilePageState>();
 
@@ -44,6 +45,19 @@ class _HomeShellState extends State<HomeShell> {
     if (mounted) setState(() {});
   }
 
+  void _refreshTab(int index) {
+    switch (index) {
+      case 0:
+        _feedKey.currentState?.refresh(silent: true);
+      case 1:
+        _discoverKey.currentState?.refresh(silent: true);
+      case 2:
+        _history.refresh();
+      case 3:
+        _profileKey.currentState?.refresh(silent: true);
+    }
+  }
+
   Future<void> _completeActivity(ActivityStopResult result) async {
     _history.addCompleted(
       id: result.localId,
@@ -54,6 +68,10 @@ class _HomeShellState extends State<HomeShell> {
     );
     // Uzak listeyi de senkronla (buluta yazıldıysa).
     await _history.refresh();
+    // Diğer sekmeler de güncel kalsın.
+    _feedKey.currentState?.refresh(silent: true);
+    _discoverKey.currentState?.refresh(silent: true);
+    _profileKey.currentState?.refresh(silent: true);
   }
 
   @override
@@ -70,7 +88,7 @@ class _HomeShellState extends State<HomeShell> {
               child: IndexedStack(
                 index: _selectedIndex,
                 children: [
-                  const FeedPage(),
+                  FeedPage(key: _feedKey),
                   DiscoverPage(key: _discoverKey),
                   const ActivityPage(),
                   ProfilePage(key: _profileKey),
@@ -118,15 +136,7 @@ class _HomeShellState extends State<HomeShell> {
           selectedIndex: _selectedIndex,
           onDestinationSelected: (index) {
             setState(() => _selectedIndex = index);
-            if (index == 1) {
-              _discoverKey.currentState?.refresh();
-            }
-            if (index == 2) {
-              _history.refresh();
-            }
-            if (index == 3) {
-              _profileKey.currentState?.refresh();
-            }
+            _refreshTab(index);
           },
           destinations: const [
             NavigationDestination(
