@@ -10,6 +10,7 @@ class AuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // dart-define yoksa demo shell; gerçek profil için .env ile çalıştır.
     if (!SupabaseConfig.isConfigured) return const HomeShell();
 
     final client = SupabaseService.client!;

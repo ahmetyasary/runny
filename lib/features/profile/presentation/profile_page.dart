@@ -33,8 +33,21 @@ class ProfilePageState extends State<ProfilePage> {
     final history = ActivityHistoryScope.maybeOf(context);
     final historyFuture = history?.refresh();
 
+    if (!SupabaseConfig.isConfigured) {
+      if (!mounted) return;
+      setState(() {
+        _profile = null;
+        _loading = false;
+        _error =
+            'Supabase bağlı değil.\nUygulamayı şöyle başlat:\nflutter run --dart-define-from-file=.env';
+      });
+      await historyFuture;
+      return;
+    }
+
     final client = SupabaseService.client;
-    if (client == null || client.auth.currentUser == null) {
+    final user = client?.auth.currentUser;
+    if (client == null || user == null) {
       if (!mounted) return;
       setState(() {
         _profile = null;
@@ -57,7 +70,9 @@ class ProfilePageState extends State<ProfilePage> {
       setState(() {
         _profile = profile;
         _loading = false;
-        _error = profile == null ? 'Profil bulunamadı.' : null;
+        _error = profile == null
+            ? 'Profil kaydı bulunamadı. Çıkış yapıp tekrar giriş dene.'
+            : null;
       });
     } catch (_) {
       await historyFuture;
@@ -80,13 +95,23 @@ class ProfilePageState extends State<ProfilePage> {
 
     if (profile == null) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_error ?? 'Profil bulunamadı'),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: refresh, child: const Text('Tekrar dene')),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _error ?? 'Profil bulunamadı',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppColors.mutedInk,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(onPressed: refresh, child: const Text('Tekrar dene')),
+            ],
+          ),
         ),
       );
     }
