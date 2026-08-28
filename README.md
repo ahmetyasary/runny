@@ -13,17 +13,25 @@ Runny, spor aktivitelerini kaydetmeyi ve rotaları sosyal olarak paylaşmayı sa
 
 ## Supabase bağlama
 
-1. `supabase/config.local.example.json` dosyasını kopyala:
+1. Ortam dosyasını oluştur:
 
 ```bash
-cp supabase/config.local.example.json supabase/config.local.json
+cp .env.example .env
 ```
 
-2. URL ve publishable key değerlerini doldur (`config.local.json` git’e girmez).
+2. `.env` içine URL ve publishable key değerlerini yaz (`.env` git’e girmez).
+
+Alternatif: `supabase/config.local.example.json` → `supabase/config.local.json`
 
 3. SQL Editor’da `supabase/schema.sql` içeriğini çalıştır.
 
 4. Uygulamayı başlat:
+
+```bash
+flutter run --dart-define-from-file=.env
+```
+
+veya:
 
 ```bash
 flutter run --dart-define-from-file=supabase/config.local.json

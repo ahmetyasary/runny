@@ -45,5 +45,6 @@ app.*.map.json
 /android/app/release
 
 # Local secrets (Supabase keys)
+.env
 supabase/config.local.json
 supabase/.temp/
