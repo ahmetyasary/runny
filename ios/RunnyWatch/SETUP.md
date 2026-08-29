@@ -1,26 +1,38 @@
-# Apple Watch kurulumu
+# Apple Watch — gerçek cihaza yükleme
 
-Flutter watchOS derlemez. Saat tarafı native SwiftUI; telefon ↔ saat `WatchConnectivity` ile konuşur.
+## Önemli
 
-## Hazır olanlar
+iPhone’daki **Saat uygulaması → Uygulamalar → Yükle** geliştirici (debug) build’lerde sık başarısız olur.
+Watch’u **Xcode ile** yükle.
 
-- Flutter: `lib/features/watch/` (`WatchBridge`, senkron, durum ekranı)
-- iOS: `Runner/AppDelegate.swift` içinde WCSession + MethodChannel (`com.runny/watch`)
-- watchOS kaynakları: `ios/RunnyWatch/RunnyWatchApp.swift`
+## Adımlar
 
-## Xcode’da Watch target ekle (bir kez)
+1. Apple Watch iPhone’a eşli, Bluetooth açık, ikisi de açık/kilitli değil.
+2. Mac’te:
+   ```bash
+   open ios/Runner.xcworkspace
+   ```
+3. Üstten scheme: **Runner**
+4. Destination: **Ahmet’s iPhone** (fiziksel)
+5. **Product → Clean Build Folder**, sonra ▶ **Run**
+6. iPhone’a kurulunca Watch companion da gider.
+7. Saatte uyarı çıkarsa: **Ayarlar → Genel → VPN ve Cihaz Yönetimi / Geliştirici** → güven.
 
-1. `ios/Runner.xcworkspace` dosyasını Xcode ile aç.
-2. **File → New → Target… → watchOS → App**
-3. Product Name: `RunnyWatch`
-4. Bundle ID: `com.example.runny.watchkitapp` (companion: `com.example.runny`)
-5. Embed: **Watch App for Existing Application → Runner**
-6. Oluşan varsayılan Swift dosyalarını sil; yerine `ios/RunnyWatch/RunnyWatchApp.swift` dosyasını target’a ekle.
-7. Watch target Info.plist’e `WKCompanionAppBundleIdentifier = com.example.runny` koy.
-8. Gerçek cihazda dene (Simulator’da WCSession kısıtlıdır).
+Alternatif: Scheme **RunnyWatch**, destination fiziksel **Apple Watch** → Run.
 
-## Çalışma
+## Bundle ID’ler (doğru olmalı)
 
-- Telefonda aktivite başlayınca süre/mesafe saate gider.
-- Saatte **Koşu başlat / Bitir** telefona komut yollar.
-- Uygulamada: **Profil → ⚙️ → Apple Watch**
+| Hedef | Bundle ID |
+|--------|-----------|
+| iPhone | `com.smartlogy.runny` |
+| Watch | `com.smartlogy.runny.watchkitapp` |
+| Companion key | `WKCompanionAppBundleIdentifier = com.smartlogy.runny` |
+
+## Hâlâ yüklenmezse
+
+```bash
+# Telefondan uygulamayı sil, saatten de sil
+rm -rf ~/Library/Developer/Xcode/DerivedData/Runner-*
+```
+
+Sonra Xcode’dan tekrar Run.

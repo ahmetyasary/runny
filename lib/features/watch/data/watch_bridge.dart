@@ -64,6 +64,8 @@ class WatchBridge {
     required int elapsedSeconds,
     required double distanceMeters,
     bool isRecording = true,
+    double? latitude,
+    double? longitude,
   }) async {
     ensureListening();
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
@@ -75,6 +77,8 @@ class WatchBridge {
         'distanceMeters': distanceMeters,
         'isRecording': isRecording,
         'updatedAt': DateTime.now().toUtc().toIso8601String(),
+        'latitude': ?latitude,
+        'longitude': ?longitude,
       });
     } on PlatformException catch (error) {
       debugPrint('WatchBridge send failed: ${error.message}');

@@ -44,12 +44,15 @@ class WatchSessionSync {
 
   Future<void> _push({required String action}) async {
     final type = session.activityType ?? '';
+    final last = session.points.isEmpty ? null : session.points.last;
     await WatchBridge.sendSessionUpdate(
       action: action,
       activityType: type,
       elapsedSeconds: session.elapsed.inSeconds,
       distanceMeters: session.distanceMeters,
       isRecording: session.isRecording,
+      latitude: last?.latitude,
+      longitude: last?.longitude,
     );
   }
 

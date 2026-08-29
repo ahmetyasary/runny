@@ -95,12 +95,15 @@ class ActivitySessionController extends ChangeNotifier {
     });
 
     notifyListeners();
+    final last = points.isEmpty ? null : points.last;
     await WatchBridge.sendSessionUpdate(
       action: 'start',
       activityType: type,
       elapsedSeconds: 0,
       distanceMeters: 0,
       isRecording: true,
+      latitude: last?.latitude,
+      longitude: last?.longitude,
     );
     return true;
   }
@@ -160,12 +163,15 @@ class ActivitySessionController extends ChangeNotifier {
     isMinimized = false;
     notifyListeners();
 
+    final last = snapshotPoints.isEmpty ? null : snapshotPoints.last;
     await WatchBridge.sendSessionUpdate(
       action: 'stop',
       activityType: typeLabel,
       elapsedSeconds: duration.inSeconds,
       distanceMeters: distance,
       isRecording: false,
+      latitude: last?.latitude,
+      longitude: last?.longitude,
     );
 
     return ActivityStopResult(

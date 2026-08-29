@@ -27,6 +27,8 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
   final _mapController = MapController();
   bool _isLoadingLocation = false;
   bool _starting = false;
+  bool _mapReady = false;
+  String? _mapError;
 
   ActivitySessionController get _session => widget.session;
 
@@ -34,9 +36,6 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
   void initState() {
     super.initState();
     _session.addListener(_onSessionChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _prepareMap();
-    });
   }
 
   @override
@@ -48,34 +47,73 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
   void _onSessionChanged() {
     if (!mounted) return;
     setState(() {});
-    if (_session.points.isNotEmpty) {
+    if (_mapReady && _session.points.isNotEmpty) {
       _mapController.move(_session.points.last, _mapController.camera.zoom);
     }
   }
 
   Future<void> _prepareMap() async {
-    if (_session.points.isNotEmpty) {
-      _mapController.move(_session.points.last, 16);
-      return;
-    }
     try {
       final enabled = await Geolocator.isLocationServiceEnabled();
-      if (!enabled) return;
+      if (!enabled) {
+        if (mounted) {
+          setState(() => _mapError = 'Konum servisi kapalı.');
+        }
+        return;
+      }
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
+        if (mounted) {
+          setState(() => _mapError = 'Konum izni gerekli.');
+        }
+        return;
+      }
+
+      if (_session.points.isNotEmpty) {
+        _mapController.move(_session.points.last, 16);
+        if (mounted) setState(() => _mapError = null);
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition();
+      if (!mounted || !_mapReady) return;
+      _mapController.move(
+        LatLng(position.latitude, position.longitude),
+        16,
+      );
+      setState(() => _mapError = null);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _mapError = 'Konum alınamadı.');
+      }
+    }
+  }
+
+  Future<void> _centerOnCurrentLocation() async {
+    setState(() => _isLoadingLocation = true);
+    try {
+      if (_session.points.isNotEmpty) {
+        _mapController.move(_session.points.last, 16.5);
         return;
       }
       final position = await Geolocator.getCurrentPosition();
       if (!mounted) return;
       _mapController.move(
         LatLng(position.latitude, position.longitude),
-        15.5,
+        16.5,
       );
-    } catch (_) {}
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Konum alınamadı.')),
+      );
+    } finally {
+      if (mounted) setState(() => _isLoadingLocation = false);
+    }
   }
 
   @override
@@ -124,12 +162,20 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
               mapController: _mapController,
               options: MapOptions(
                 initialCenter: currentPoint,
-                initialZoom: 14.7,
+                initialZoom: 15.5,
+                onMapReady: () {
+                  _mapReady = true;
+                  _prepareMap();
+                },
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.runny.app',
+                  // OSM ana sunucusu sık engellenir; Carto daha stabil.
+                  urlTemplate:
+                      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                  subdomains: const ['a', 'b', 'c', 'd'],
+                  userAgentPackageName: 'com.smartlogy.runny',
+                  maxZoom: 20,
                 ),
                 if (routePoints.isNotEmpty)
                   PolylineLayer(
@@ -145,8 +191,8 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
                   markers: [
                     Marker(
                       point: currentPoint,
-                      width: 24,
-                      height: 24,
+                      width: 28,
+                      height: 28,
                       child: Container(
                         decoration: BoxDecoration(
                           color: AppColors.primaryDark,
@@ -163,7 +209,7 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
                 RichAttributionWidget(
                   attributions: [
                     TextSourceAttribution(
-                      'OpenStreetMap contributors',
+                      '© OpenStreetMap, © CARTO',
                       onTap: () => launchUrl(
                         Uri.parse('https://www.openstreetmap.org/copyright'),
                       ),
@@ -172,6 +218,27 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
                 ),
               ],
             ),
+            if (_mapError != null)
+              Positioned(
+                top: 70,
+                left: 18,
+                right: 18,
+                child: Material(
+                  color: Colors.black.withValues(alpha: .72),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    child: Text(
+                      _mapError!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ),
+                ),
+              ),
             Positioned(
               top: 18,
               left: 18,
@@ -245,26 +312,9 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
       );
       return;
     }
-    if (_session.points.isNotEmpty) {
+    if (_mapReady && _session.points.isNotEmpty) {
       _mapController.move(_session.points.last, 16);
-    }
-  }
-
-  Future<void> _centerOnCurrentLocation() async {
-    setState(() => _isLoadingLocation = true);
-    try {
-      final position = await Geolocator.getCurrentPosition();
-      final point = LatLng(position.latitude, position.longitude);
-      if (!mounted) return;
-      _mapController.move(point, 16);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Konum alınamadı. Lütfen tekrar dene.')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoadingLocation = false);
+      setState(() => _mapError = null);
     }
   }
 }
