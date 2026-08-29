@@ -121,6 +121,17 @@ class _FloatingActivityBubbleState extends State<FloatingActivityBubble> {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  if (session.heartRateBpm != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '♥ ${session.formattedHeartRate} bpm · ↑ ${session.formattedElevation}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

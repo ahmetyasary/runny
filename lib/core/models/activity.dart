@@ -52,6 +52,9 @@ class Activity {
     required this.comments,
     this.userId,
     this.calories = 0,
+    this.elevationGainMeters = 0,
+    this.avgHeartRate,
+    this.maxHeartRate,
     this.isLiked = false,
   });
 
@@ -68,6 +71,9 @@ class Activity {
   final int likes;
   final int comments;
   final int calories;
+  final double elevationGainMeters;
+  final int? avgHeartRate;
+  final int? maxHeartRate;
   final bool isLiked;
 
   Activity copyWith({
@@ -89,6 +95,9 @@ class Activity {
       likes: likes ?? this.likes,
       comments: comments ?? this.comments,
       calories: calories,
+      elevationGainMeters: elevationGainMeters,
+      avgHeartRate: avgHeartRate,
+      maxHeartRate: maxHeartRate,
       isLiked: isLiked ?? this.isLiked,
     );
   }

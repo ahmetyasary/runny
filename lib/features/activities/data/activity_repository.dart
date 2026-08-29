@@ -18,6 +18,9 @@ class ActivityRepository {
     distance_meters,
     duration_seconds,
     calories,
+    elevation_gain_meters,
+    avg_heart_rate,
+    max_heart_rate,
     started_at,
     created_at,
     profiles:user_id ( nickname, display_name ),
@@ -31,27 +34,50 @@ class ActivityRepository {
     required List<LatLng> points,
     required double distanceMeters,
     required Duration duration,
+    int calories = 0,
+    double elevationGainMeters = 0,
+    int? avgHeartRateBpm,
+    int? maxHeartRateBpm,
   }) async {
     final user = client.auth.currentUser;
     if (user == null) {
       throw StateError('Aktivite kaydetmek için giriş yapılmalı.');
     }
 
-    final activity = await client
-        .from('activities')
-        .insert({
-          'user_id': user.id,
-          'type': _databaseType(type),
-          'title': title,
-          'distance_meters': distanceMeters,
-          'duration_seconds': duration.inSeconds,
-          'started_at': DateTime.now()
-              .subtract(duration)
-              .toUtc()
-              .toIso8601String(),
-        })
-        .select('id')
-        .single();
+    final payload = <String, dynamic>{
+      'user_id': user.id,
+      'type': _databaseType(type),
+      'title': title,
+      'distance_meters': distanceMeters,
+      'duration_seconds': duration.inSeconds,
+      'calories': calories > 0 ? calories : null,
+      'elevation_gain_meters': elevationGainMeters,
+      'avg_heart_rate': avgHeartRateBpm,
+      'max_heart_rate': maxHeartRateBpm,
+      'started_at': DateTime.now()
+          .subtract(duration)
+          .toUtc()
+          .toIso8601String(),
+    };
+
+    Map<String, dynamic> activity;
+    try {
+      activity = await client
+          .from('activities')
+          .insert(payload)
+          .select('id')
+          .single();
+    } catch (_) {
+      // Eski şema: sağlık kolonları yoksa sade insert.
+      payload.remove('elevation_gain_meters');
+      payload.remove('avg_heart_rate');
+      payload.remove('max_heart_rate');
+      activity = await client
+          .from('activities')
+          .insert(payload)
+          .select('id')
+          .single();
+    }
 
     final id = activity['id'] as String;
 

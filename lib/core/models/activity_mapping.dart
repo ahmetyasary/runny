@@ -80,6 +80,10 @@ abstract final class ActivityMapping {
       likes: likeCount,
       comments: commentCount,
       calories: (json['calories'] as num?)?.toInt() ?? 0,
+      elevationGainMeters:
+          (json['elevation_gain_meters'] as num?)?.toDouble() ?? 0,
+      avgHeartRate: (json['avg_heart_rate'] as num?)?.toInt(),
+      maxHeartRate: (json['max_heart_rate'] as num?)?.toInt(),
       isLiked: isLiked,
     );
   }

@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>io.flutter.embedded_views_preview</key>
+	<true/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -30,6 +32,12 @@
 	<string>Runny, aktivite kaydı sırasında rotanı arka planda takip eder.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Runny, aktivitelerini ve rotanı kaydetmek için konumunu kullanır.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Runny, saatteki workout oturumunu başlatmak ve sağlık verilerini eşlemek için Sağlık verilerine erişir.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Runny, aktivite workout oturumunu Sağlık ile senkron tutar.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

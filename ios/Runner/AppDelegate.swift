@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import WatchConnectivity
+import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -11,6 +12,7 @@ import WatchConnectivity
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    RunnyLiveSessionManager.shared.requestNotificationPermission()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -31,10 +33,89 @@ import WatchConnectivity
       case "sendSessionUpdate":
         let args = call.arguments as? [String: Any] ?? [:]
         WatchConnectivityManager.shared.sendSessionUpdate(args)
+        Self.handleSessionSideEffects(args)
+        result(nil)
+      case "launchWatchWorkout":
+        let args = call.arguments as? [String: Any] ?? [:]
+        let type = args["activityType"] as? String ?? "Koşu"
+        RunnyLiveSessionManager.shared.launchWatchApp(activityType: type)
+        result(nil)
+      case "startLiveActivity":
+        let args = call.arguments as? [String: Any] ?? [:]
+        Self.startLive(from: args)
+        result(nil)
+      case "updateLiveActivity":
+        let args = call.arguments as? [String: Any] ?? [:]
+        Self.updateLive(from: args)
+        result(nil)
+      case "endLiveActivity":
+        Task { @MainActor in
+          RunnyLiveSessionManager.shared.endLiveActivity()
+        }
+        result(nil)
+      case "notifyLocal":
+        let args = call.arguments as? [String: Any] ?? [:]
+        let title = args["title"] as? String ?? "Runny"
+        let body = args["body"] as? String ?? ""
+        RunnyLiveSessionManager.shared.notifyLocal(title: title, body: body)
         result(nil)
       default:
         result(FlutterMethodNotImplemented)
       }
+    }
+  }
+
+  private static func handleSessionSideEffects(_ args: [String: Any]) {
+    let action = args["action"] as? String ?? ""
+    let isRecording = args["isRecording"] as? Bool ?? false
+    let type = args["activityType"] as? String ?? "Aktivite"
+
+    if action == "start" || (action == "update" && isRecording) {
+      // startWatchApp yalnızca start'ta
+      if action == "start" {
+        RunnyLiveSessionManager.shared.launchWatchApp(activityType: type)
+        startLive(from: args)
+      } else {
+        updateLive(from: args)
+      }
+    } else if action == "stop" || (action == "idle" && !isRecording) {
+      Task { @MainActor in
+        RunnyLiveSessionManager.shared.endLiveActivity()
+      }
+    }
+  }
+
+  private static func startLive(from args: [String: Any]) {
+    let type = args["activityType"] as? String ?? "Aktivite"
+    let elapsed = (args["elapsedSeconds"] as? NSNumber)?.intValue ?? 0
+    let distance = (args["distanceMeters"] as? NSNumber)?.doubleValue ?? 0
+    let hr = (args["heartRateBpm"] as? NSNumber)?.doubleValue
+    let elev = (args["elevationGainMeters"] as? NSNumber)?.doubleValue ?? 0
+    Task { @MainActor in
+      RunnyLiveSessionManager.shared.startLiveActivity(
+        activityType: type,
+        elapsedSeconds: elapsed,
+        distanceMeters: distance,
+        heartRateBpm: hr,
+        elevationGainMeters: elev
+      )
+    }
+  }
+
+  private static func updateLive(from args: [String: Any]) {
+    let elapsed = (args["elapsedSeconds"] as? NSNumber)?.intValue ?? 0
+    let distance = (args["distanceMeters"] as? NSNumber)?.doubleValue ?? 0
+    let hr = (args["heartRateBpm"] as? NSNumber)?.doubleValue
+    let elev = (args["elevationGainMeters"] as? NSNumber)?.doubleValue ?? 0
+    let isRecording = args["isRecording"] as? Bool ?? true
+    Task { @MainActor in
+      RunnyLiveSessionManager.shared.updateLiveActivity(
+        elapsedSeconds: elapsed,
+        distanceMeters: distance,
+        heartRateBpm: hr,
+        elevationGainMeters: elev,
+        isRecording: isRecording
+      )
     }
   }
 }
@@ -74,7 +155,6 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
   func sendSessionUpdate(_ payload: [String: Any]) {
     guard let session, session.activationState == .activated else { return }
 
-    // Application context: arka planda da güncellenir.
     try? session.updateApplicationContext(payload)
 
     if session.isReachable {
@@ -104,8 +184,6 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
       self?.channel?.invokeMethod("watchEvent", arguments: payload)
     }
   }
-
-  // MARK: - WCSessionDelegate
 
   func session(
     _ session: WCSession,

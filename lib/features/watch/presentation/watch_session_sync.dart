@@ -12,6 +12,7 @@ class WatchSessionSync {
   final ActivitySessionController session;
   StreamSubscription<WatchEvent>? _watchSub;
   Timer? _pushTimer;
+  Timer? _statusTimer;
   bool _started = false;
 
   Future<void> start() async {
@@ -20,6 +21,11 @@ class WatchSessionSync {
     WatchBridge.ensureListening();
     session.addListener(_onSessionChanged);
     _watchSub = WatchBridge.events.listen(_onWatchEvent);
+    await _refreshWatchStatus();
+    _statusTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => unawaited(_refreshWatchStatus()),
+    );
     await _push(action: 'sync');
   }
 
@@ -27,6 +33,12 @@ class WatchSessionSync {
     session.removeListener(_onSessionChanged);
     _watchSub?.cancel();
     _pushTimer?.cancel();
+    _statusTimer?.cancel();
+  }
+
+  Future<void> _refreshWatchStatus() async {
+    final status = await WatchBridge.getStatus();
+    session.setWatchReachable(status.isConnected);
   }
 
   void _onSessionChanged() {
@@ -49,10 +61,12 @@ class WatchSessionSync {
       action: action,
       activityType: type,
       elapsedSeconds: session.elapsed.inSeconds,
-      distanceMeters: session.distanceMeters,
+      distanceMeters: session.effectiveDistanceMeters,
       isRecording: session.isRecording,
       latitude: last?.latitude,
       longitude: last?.longitude,
+      heartRateBpm: session.heartRateBpm,
+      elevationGainMeters: session.elevationGainMeters,
     );
   }
 
@@ -63,16 +77,33 @@ class WatchSessionSync {
         if (!session.isRecording) {
           final ok = await session.start(type);
           debugPrint('Watch start → phone: $ok');
-          if (ok) await notifyStarted();
+          if (ok) {
+            session.minimize();
+            await notifyStarted();
+            await WatchBridge.notifyLocal(
+              title: 'Runny',
+              body: '$type saatten başladı — canlı kayıt açık.',
+            );
+          }
         }
       case WatchEventType.stopRequested:
         if (session.isRecording || session.hasActiveSession) {
           await session.stop(save: true);
           await notifyStopped();
+          await WatchBridge.notifyLocal(
+            title: 'Runny',
+            body: 'Aktivite saatten bitirildi.',
+          );
         }
+      case WatchEventType.healthUpdate:
+        session.applyWatchHealth(event.payload);
+        session.setWatchReachable(true);
+        // Live Activity metriklerini güncelle.
+        await _push(action: 'update');
+      case WatchEventType.statusChanged:
+        await _refreshWatchStatus();
       case WatchEventType.pauseRequested:
       case WatchEventType.resumeRequested:
-      case WatchEventType.statusChanged:
       case WatchEventType.unknown:
         break;
     }

@@ -20,6 +20,12 @@
 	<string>0.0.1</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Runny, aktivite sırasında nabız, kalori ve mesafe verilerini göstermek için Sağlık verilerini okur.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Runny, tamamlanan aktiviteleri Sağlık uygulamasına workout olarak kaydeder.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Runny, aktivite sırasında yükselti değişimini ölçmek için hareket sensörlerini kullanır.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

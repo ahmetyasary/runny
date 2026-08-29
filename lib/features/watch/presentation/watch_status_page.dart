@@ -38,6 +38,8 @@ class _WatchStatusPageState extends State<WatchStatusPage> {
 
   @override
   Widget build(BuildContext context) {
+    final connected = _status.isConnected;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Apple Watch'),
@@ -68,27 +70,14 @@ class _WatchStatusPageState extends State<WatchStatusPage> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.watch_rounded,
-                            color: _status.isConnected
-                                ? AppColors.primaryDark
-                                : AppColors.mutedInk,
-                            size: 28,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _status.label,
-                              style: const TextStyle(
-                                color: AppColors.ink,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                        ],
+                      Center(
+                        child: Icon(
+                          Icons.watch_rounded,
+                          size: 56,
+                          color: connected
+                              ? const Color(0xFF2ECC71)
+                              : const Color(0xFFE74C3C),
+                        ),
                       ),
                       const SizedBox(height: 16),
                       _StatusRow(label: 'Destekleniyor', value: _status.supported),
@@ -114,8 +103,7 @@ class _WatchStatusPageState extends State<WatchStatusPage> {
           const Text(
             'Telefon aktivite başlatınca süre ve mesafe saate iletilir. '
             'Saatten de aktivite başlatıp durdurabilirsin.\n\n'
-            'Watch uygulamasını Xcode ile bir kez eklemen gerekir: '
-            'ios/RunnyWatch klasöründeki SwiftUI kaynakları hazır.',
+            'Yeşil saat: bağlı · Kırmızı saat: kopuk.',
             style: TextStyle(color: AppColors.mutedInk, height: 1.45),
           ),
         ],
@@ -145,7 +133,7 @@ class _StatusRow extends StatelessWidget {
           Icon(
             value ? Icons.check_circle_rounded : Icons.cancel_outlined,
             size: 18,
-            color: value ? AppColors.primaryDark : AppColors.mutedInk,
+            color: value ? const Color(0xFF2ECC71) : const Color(0xFFE74C3C),
           ),
         ],
       ),

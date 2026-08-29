@@ -66,6 +66,8 @@ class WatchBridge {
     bool isRecording = true,
     double? latitude,
     double? longitude,
+    double? heartRateBpm,
+    double? elevationGainMeters,
   }) async {
     ensureListening();
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
@@ -79,12 +81,42 @@ class WatchBridge {
         'updatedAt': DateTime.now().toUtc().toIso8601String(),
         'latitude': ?latitude,
         'longitude': ?longitude,
+        'heartRateBpm': ?heartRateBpm,
+        'elevationGainMeters': ?elevationGainMeters,
       });
     } on PlatformException catch (error) {
       debugPrint('WatchBridge send failed: ${error.message}');
     } on MissingPluginException {
       // Simulator / plugin yok.
     }
+  }
+
+  static Future<void> launchWatchWorkout(String activityType) async {
+    ensureListening();
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    try {
+      await channel.invokeMethod('launchWatchWorkout', {
+        'activityType': activityType,
+      });
+    } on PlatformException catch (error) {
+      debugPrint('launchWatchWorkout failed: ${error.message}');
+    } on MissingPluginException {}
+  }
+
+  static Future<void> notifyLocal({
+    required String title,
+    required String body,
+  }) async {
+    ensureListening();
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    try {
+      await channel.invokeMethod('notifyLocal', {
+        'title': title,
+        'body': body,
+      });
+    } on PlatformException catch (error) {
+      debugPrint('notifyLocal failed: ${error.message}');
+    } on MissingPluginException {}
   }
 }
 
@@ -93,6 +125,7 @@ enum WatchEventType {
   stopRequested,
   pauseRequested,
   resumeRequested,
+  healthUpdate,
   statusChanged,
   unknown,
 }
@@ -113,6 +146,7 @@ class WatchEvent {
       'stop' => WatchEventType.stopRequested,
       'pause' => WatchEventType.pauseRequested,
       'resume' => WatchEventType.resumeRequested,
+      'health' => WatchEventType.healthUpdate,
       'status' => WatchEventType.statusChanged,
       _ => WatchEventType.unknown,
     };

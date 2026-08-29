@@ -26,6 +26,9 @@ create table if not exists public.activities (
   duration_seconds integer not null default 0,
   avg_pace_seconds numeric,
   calories integer,
+  elevation_gain_meters numeric not null default 0,
+  avg_heart_rate integer,
+  max_heart_rate integer,
   is_public boolean not null default true,
   started_at timestamptz not null default now(),
   created_at timestamptz not null default now()

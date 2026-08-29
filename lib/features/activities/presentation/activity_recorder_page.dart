@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
+import 'activity_map_view.dart';
 import 'activity_session_controller.dart';
 
 class ActivityRecorderPage extends StatefulWidget {
@@ -24,7 +23,7 @@ class ActivityRecorderPage extends StatefulWidget {
 }
 
 class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
-  final _mapController = MapController();
+  final _mapKey = GlobalKey<ActivityMapViewState>();
   bool _isLoadingLocation = false;
   bool _starting = false;
   bool _mapReady = false;
@@ -47,9 +46,6 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
   void _onSessionChanged() {
     if (!mounted) return;
     setState(() {});
-    if (_mapReady && _session.points.isNotEmpty) {
-      _mapController.move(_session.points.last, _mapController.camera.zoom);
-    }
   }
 
   Future<void> _prepareMap() async {
@@ -74,16 +70,16 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
       }
 
       if (_session.points.isNotEmpty) {
-        _mapController.move(_session.points.last, 16);
+        await _mapKey.currentState?.moveTo(_session.points.last, zoom: 16);
         if (mounted) setState(() => _mapError = null);
         return;
       }
 
       final position = await Geolocator.getCurrentPosition();
       if (!mounted || !_mapReady) return;
-      _mapController.move(
+      await _mapKey.currentState?.moveTo(
         LatLng(position.latitude, position.longitude),
-        16,
+        zoom: 16,
       );
       setState(() => _mapError = null);
     } catch (_) {
@@ -97,14 +93,14 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
     setState(() => _isLoadingLocation = true);
     try {
       if (_session.points.isNotEmpty) {
-        _mapController.move(_session.points.last, 16.5);
+        await _mapKey.currentState?.moveTo(_session.points.last, zoom: 16.5);
         return;
       }
       final position = await Geolocator.getCurrentPosition();
       if (!mounted) return;
-      _mapController.move(
+      await _mapKey.currentState?.moveTo(
         LatLng(position.latitude, position.longitude),
-        16.5,
+        zoom: 16.5,
       );
     } catch (_) {
       if (!mounted) return;
@@ -121,7 +117,6 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
     const fallbackPoint = LatLng(41.0672, 29.0344);
     final points = _session.points;
     final currentPoint = points.isEmpty ? fallbackPoint : points.last;
-    final routePoints = points.length >= 2 ? points : const <LatLng>[];
 
     return PopScope(
       canPop: !_session.isRecording,
@@ -158,65 +153,14 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
         ),
         body: Stack(
           children: [
-            FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: currentPoint,
-                initialZoom: 15.5,
-                onMapReady: () {
-                  _mapReady = true;
-                  _prepareMap();
-                },
-              ),
-              children: [
-                TileLayer(
-                  // OSM ana sunucusu sık engellenir; Carto daha stabil.
-                  urlTemplate:
-                      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                  subdomains: const ['a', 'b', 'c', 'd'],
-                  userAgentPackageName: 'com.smartlogy.runny',
-                  maxZoom: 20,
-                ),
-                if (routePoints.isNotEmpty)
-                  PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: routePoints,
-                        color: AppColors.primaryDark,
-                        strokeWidth: 5,
-                      ),
-                    ],
-                  ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: currentPoint,
-                      width: 28,
-                      height: 28,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryDark,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 4),
-                          boxShadow: const [
-                            BoxShadow(color: Colors.black26, blurRadius: 8),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                RichAttributionWidget(
-                  attributions: [
-                    TextSourceAttribution(
-                      '© OpenStreetMap, © CARTO',
-                      onTap: () => launchUrl(
-                        Uri.parse('https://www.openstreetmap.org/copyright'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            ActivityMapView(
+              key: _mapKey,
+              points: points,
+              initialCenter: currentPoint,
+              onReady: () {
+                _mapReady = true;
+                _prepareMap();
+              },
             ),
             if (_mapError != null)
               Positioned(
@@ -246,11 +190,12 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
               child: _LivePill(
                 isRecording: _session.isRecording,
                 elapsed: _session.formattedElapsed,
+                watchReachable: _session.watchReachable,
               ),
             ),
             Positioned(
               right: 18,
-              bottom: 210,
+              bottom: 300,
               child: FloatingActionButton.small(
                 heroTag: 'locate',
                 onPressed: _centerOnCurrentLocation,
@@ -270,7 +215,15 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
               bottom: 0,
               child: _RecorderPanel(
                 elapsed: _session.formattedElapsed,
-                distance: _session.distanceMeters,
+                distanceLabel: _session.formattedDistance,
+                pace: _session.formattedPace,
+                heartRate: _session.formattedHeartRate,
+                avgHeartRate: _session.formattedAvgHeartRate,
+                maxHeartRate: _session.formattedMaxHeartRate,
+                elevation: _session.formattedElevation,
+                altitude: _session.formattedAltitude,
+                calories: _session.formattedCalories,
+                watchLinked: _session.watchReachable,
                 isRecording: _session.isRecording,
                 isBusy: _starting,
                 onPressed: _toggleRecording,
@@ -313,17 +266,22 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
       return;
     }
     if (_mapReady && _session.points.isNotEmpty) {
-      _mapController.move(_session.points.last, 16);
+      await _mapKey.currentState?.moveTo(_session.points.last, zoom: 16);
       setState(() => _mapError = null);
     }
   }
 }
 
 class _LivePill extends StatelessWidget {
-  const _LivePill({required this.isRecording, required this.elapsed});
+  const _LivePill({
+    required this.isRecording,
+    required this.elapsed,
+    required this.watchReachable,
+  });
 
   final bool isRecording;
   final String elapsed;
+  final bool watchReachable;
 
   @override
   Widget build(BuildContext context) {
@@ -355,6 +313,14 @@ class _LivePill extends StatelessWidget {
             ),
           ),
           const Spacer(),
+          Icon(
+            Icons.watch_rounded,
+            size: 18,
+            color: watchReachable
+                ? const Color(0xFF2ECC71)
+                : const Color(0xFFE74C3C),
+          ),
+          const SizedBox(width: 10),
           Text(
             elapsed,
             style: const TextStyle(
@@ -372,7 +338,15 @@ class _LivePill extends StatelessWidget {
 class _RecorderPanel extends StatelessWidget {
   const _RecorderPanel({
     required this.elapsed,
-    required this.distance,
+    required this.distanceLabel,
+    required this.pace,
+    required this.heartRate,
+    required this.avgHeartRate,
+    required this.maxHeartRate,
+    required this.elevation,
+    required this.altitude,
+    required this.calories,
+    required this.watchLinked,
     required this.isRecording,
     required this.isBusy,
     required this.onPressed,
@@ -380,7 +354,15 @@ class _RecorderPanel extends StatelessWidget {
   });
 
   final String elapsed;
-  final double distance;
+  final String distanceLabel;
+  final String pace;
+  final String heartRate;
+  final String avgHeartRate;
+  final String maxHeartRate;
+  final String elevation;
+  final String altitude;
+  final String calories;
+  final bool watchLinked;
   final bool isRecording;
   final bool isBusy;
   final VoidCallback onPressed;
@@ -389,7 +371,7 @@ class _RecorderPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(22, 20, 22, 25),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 22),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
@@ -400,15 +382,42 @@ class _RecorderPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              _RecorderMetric(label: 'Süre', value: elapsed),
-              _RecorderMetric(
-                label: 'Mesafe',
-                value: '${(distance / 1000).toStringAsFixed(2)} km',
+              Icon(
+                Icons.watch_rounded,
+                size: 22,
+                color: watchLinked ? const Color(0xFF2ECC71) : const Color(0xFFE74C3C),
               ),
-              const _RecorderMetric(label: 'Tempo', value: '--:--'),
+              const Spacer(),
             ],
           ),
-          const SizedBox(height: 19),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _RecorderMetric(label: 'Süre', value: elapsed),
+              _RecorderMetric(label: 'Mesafe', value: distanceLabel),
+              _RecorderMetric(label: 'Tempo', value: pace),
+              _RecorderMetric(label: 'Kalori', value: '$calories kcal'),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _RecorderMetric(label: 'Nabız', value: '$heartRate bpm'),
+              _RecorderMetric(label: 'Ort.', value: avgHeartRate),
+              _RecorderMetric(label: 'Max', value: maxHeartRate),
+              _RecorderMetric(label: 'Yükseliş', value: elevation),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _RecorderMetric(label: 'İrtifa', value: altitude),
+              const Spacer(),
+              const Spacer(),
+              const Spacer(),
+            ],
+          ),
+          const SizedBox(height: 14),
           Row(
             children: [
               if (onMinimize != null) ...[
@@ -427,7 +436,6 @@ class _RecorderPanel extends StatelessWidget {
                 const SizedBox(width: 10),
               ],
               Expanded(
-                flex: onMinimize == null ? 1 : 1,
                 child: FilledButton.icon(
                   onPressed: isBusy ? null : onPressed,
                   icon: isBusy
@@ -478,9 +486,11 @@ class _RecorderMetric extends StatelessWidget {
             value,
             style: const TextStyle(
               color: AppColors.ink,
-              fontSize: 16,
+              fontSize: 13,
               fontWeight: FontWeight.w800,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

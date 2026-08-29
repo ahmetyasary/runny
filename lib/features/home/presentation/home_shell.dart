@@ -71,6 +71,10 @@ class _HomeShellState extends State<HomeShell> {
       title: result.title,
       distanceMeters: result.distanceMeters,
       duration: result.duration,
+      calories: result.calories,
+      elevationGainMeters: result.elevationGainMeters,
+      avgHeartRate: result.avgHeartRateBpm,
+      maxHeartRate: result.maxHeartRateBpm,
     );
     // Uzak listeyi de senkronla (buluta yazıldıysa).
     await _history.refresh();

@@ -259,6 +259,26 @@ class _ActivityListItem extends StatelessWidget {
                           ),
                         ),
                       ],
+                      if (activity.avgHeartRate != null) ...[
+                        const SizedBox(width: 12),
+                        Text(
+                          '♥ ${activity.avgHeartRate}',
+                          style: const TextStyle(
+                            color: AppColors.mutedInk,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                      if (activity.elevationGainMeters > 0) ...[
+                        const SizedBox(width: 12),
+                        Text(
+                          '↑ ${activity.elevationGainMeters.round()} m',
+                          style: const TextStyle(
+                            color: AppColors.mutedInk,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ],

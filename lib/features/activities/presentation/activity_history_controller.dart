@@ -55,6 +55,9 @@ class ActivityHistoryController extends ChangeNotifier {
     required Duration duration,
     String location = 'Konum yok',
     int calories = 0,
+    double elevationGainMeters = 0,
+    int? avgHeartRate,
+    int? maxHeartRate,
   }) {
     final user = SupabaseService.client?.auth.currentUser;
     final activity = Activity(
@@ -71,6 +74,9 @@ class ActivityHistoryController extends ChangeNotifier {
       likes: 0,
       comments: 0,
       calories: calories,
+      elevationGainMeters: elevationGainMeters,
+      avgHeartRate: avgHeartRate,
+      maxHeartRate: maxHeartRate,
     );
 
     activities = [activity, ...activities.where((item) => item.id != id)];
