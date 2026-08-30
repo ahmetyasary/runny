@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -100,11 +101,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Future<void> _pickAvatar(ImageSource source) async {
     try {
+      // Bottom sheet animasyonu bitsin — aksi halde iOS picker sık sık açılmaz.
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      if (!mounted) return;
+
       final picked = await _picker.pickImage(
         source: source,
         maxWidth: 1024,
         maxHeight: 1024,
         imageQuality: 85,
+        requestFullMetadata: false,
       );
       if (picked == null || !mounted) return;
       setState(() {
@@ -112,12 +118,28 @@ class _EditProfilePageState extends State<EditProfilePage> {
         _removeAvatar = false;
         _error = null;
       });
-    } catch (_) {
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      final denied = error.code.toLowerCase().contains('access') ||
+          error.code.toLowerCase().contains('permission') ||
+          (error.message?.toLowerCase().contains('permission') ?? false);
+      setState(() {
+        if (source == ImageSource.camera) {
+          _error = denied
+              ? 'Kamera izni yok. Ayarlar → Runny → Kamera.'
+              : 'Kamera açılamadı (simülatörde kamera yok; galeriden dene).';
+        } else {
+          _error = denied
+              ? 'Galeri izni yok. Ayarlar → Runny → Fotoğraflar.'
+              : 'Galeri açılamadı: ${error.message ?? error.code}';
+        }
+      });
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _error = source == ImageSource.camera
-            ? 'Kamera açılamadı. İzinleri kontrol et.'
-            : 'Galeri açılamadı. İzinleri kontrol et.';
+            ? 'Kamera açılamadı. Simülatörde galeriden seçmeyi dene.'
+            : 'Galeri açılamadı: $error';
       });
     }
   }
@@ -138,7 +160,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               title: const Text('Fotoğraf çek'),
               onTap: () {
                 Navigator.pop(context);
-                _pickAvatar(ImageSource.camera);
+                unawaited(_pickAvatar(ImageSource.camera));
               },
             ),
             ListTile(
@@ -146,7 +168,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               title: const Text('Galeriden seç'),
               onTap: () {
                 Navigator.pop(context);
-                _pickAvatar(ImageSource.gallery);
+                unawaited(_pickAvatar(ImageSource.gallery));
               },
             ),
             if (hasPhoto)

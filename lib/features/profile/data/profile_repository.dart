@@ -87,7 +87,8 @@ class ProfileRepository {
       'sport_goals': SportGoal.mapToJson(filteredGoals),
     };
     if (avatarUrl != null) {
-      payload['avatar_url'] = avatarUrl;
+      // Boş string = fotoğrafı kaldır.
+      payload['avatar_url'] = avatarUrl.isEmpty ? null : avatarUrl;
     }
 
     final row = await client
@@ -110,18 +111,41 @@ class ProfileRepository {
       throw StateError('Fotoğraf yüklemek için giriş yapılmalı.');
     }
 
-    final ext = contentType.contains('png') ? 'png' : 'jpg';
+    final ext = contentType.contains('png')
+        ? 'png'
+        : contentType.contains('webp')
+            ? 'webp'
+            : 'jpg';
     final path = '${user.id}/avatar.$ext';
 
-    await client.storage.from(_avatarBucket).uploadBinary(
-          path,
-          bytes,
-          fileOptions: FileOptions(
-            upsert: true,
-            contentType: contentType,
-            cacheControl: '3600',
-          ),
+    try {
+      await client.storage.from(_avatarBucket).uploadBinary(
+            path,
+            bytes,
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: contentType.startsWith('image/')
+                  ? contentType
+                  : 'image/jpeg',
+              cacheControl: '3600',
+            ),
+          );
+    } on StorageException catch (error) {
+      // Bucket yok / RLS → daha anlaşılır mesaj.
+      final msg = error.message.toLowerCase();
+      if (msg.contains('bucket') ||
+          msg.contains('not found') ||
+          msg.contains('row-level security') ||
+          msg.contains('unauthorized') ||
+          error.statusCode == '404' ||
+          error.statusCode == '403') {
+        throw StorageException(
+          'avatars bucket / izin eksik. Supabase’de 009_avatars_storage.sql çalıştır.',
+          statusCode: error.statusCode,
         );
+      }
+      rethrow;
+    }
 
     final publicUrl = client.storage.from(_avatarBucket).getPublicUrl(path);
     // Cache-bust so UI refreshes immediately after replace.

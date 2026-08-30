@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import '../../../core/models/profile_options.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../activities/presentation/activity_history_controller.dart';
-import '../../activities/presentation/activity_page.dart';
 import '../../activities/presentation/activity_recorder_page.dart';
 import '../../activities/presentation/activity_session_controller.dart';
 import '../../activities/presentation/floating_activity_bubble.dart';
 import '../../discover/presentation/discover_page.dart';
 import '../../feed/presentation/feed_page.dart';
+import '../../groups/presentation/groups_page.dart';
 import '../../profile/presentation/profile_page.dart';
 import '../../watch/presentation/watch_session_sync.dart';
 
@@ -25,6 +25,7 @@ class _HomeShellState extends State<HomeShell> {
   final _history = ActivityHistoryController();
   final _feedKey = GlobalKey<FeedPageState>();
   final _discoverKey = GlobalKey<DiscoverPageState>();
+  final _groupsKey = GlobalKey<GroupsPageState>();
   final _profileKey = GlobalKey<ProfilePageState>();
   late final WatchSessionSync _watchSync;
 
@@ -57,7 +58,7 @@ class _HomeShellState extends State<HomeShell> {
       case 1:
         _discoverKey.currentState?.refresh(silent: true);
       case 2:
-        _history.refresh();
+        _groupsKey.currentState?.refresh(silent: true);
       case 3:
         _profileKey.currentState?.refresh(silent: true);
     }
@@ -99,9 +100,15 @@ class _HomeShellState extends State<HomeShell> {
               child: IndexedStack(
                 index: _selectedIndex,
                 children: [
-                  FeedPage(key: _feedKey),
+                  FeedPage(
+                    key: _feedKey,
+                    onOpenOwnProfile: () {
+                      setState(() => _selectedIndex = 3);
+                      _refreshTab(3);
+                    },
+                  ),
                   DiscoverPage(key: _discoverKey),
-                  const ActivityPage(),
+                  GroupsPage(key: _groupsKey),
                   ProfilePage(key: _profileKey),
                 ],
               ),
@@ -161,9 +168,9 @@ class _HomeShellState extends State<HomeShell> {
               label: 'Keşfet',
             ),
             NavigationDestination(
-              icon: Icon(Icons.insights_outlined),
-              selectedIcon: Icon(Icons.insights_rounded),
-              label: 'Aktiviteler',
+              icon: Icon(Icons.groups_outlined),
+              selectedIcon: Icon(Icons.groups_rounded),
+              label: 'Gruplar',
             ),
             NavigationDestination(
               icon: Icon(Icons.person_outline_rounded),

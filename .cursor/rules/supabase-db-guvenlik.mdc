@@ -1,0 +1,14 @@
+---
+description: Supabase/Runny veritabanını asla silme veya resetleme
+alwaysApply: true
+---
+
+# Veritabanı güvenliği
+
+Kullanıcı Supabase (Runny projesi `lidosubbhgrxhvgkshdr`) için yetki vermiş olsa bile:
+
+- **ASLA** veritabanını silme, drop etme, wipe etme
+- **ASLA** `supabase db reset`, `drop schema`, `drop database`, tüm tabloları boşaltma
+- **ASLA** production/remote DB’de destructive migrate (veri kaybettiren DROP TABLE / TRUNCATE) kullanıcının açık onayı olmadan
+- İzinli olanlar: migration ekleme, GRANT/RLS düzeltme, yeni tablo/kolon, güvenli `ALTER` / `CREATE`
+- Şüpheli destructive SQL gerekirse önce kullanıcıya sor; varsayılan cevap **hayır**

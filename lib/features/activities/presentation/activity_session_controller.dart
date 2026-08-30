@@ -203,6 +203,8 @@ class ActivitySessionController extends ChangeNotifier {
     });
 
     notifyListeners();
+    // Live Activity + Watch: WatchSessionSync + native side-effects
+    // (sendSessionUpdate action=start) üstlenir; burada sınır payload'ı atılır.
     final last = points.isEmpty ? null : points.last;
     await WatchBridge.sendSessionUpdate(
       action: 'start',

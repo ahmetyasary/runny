@@ -49,9 +49,8 @@ import UserNotifications
         Self.updateLive(from: args)
         result(nil)
       case "endLiveActivity":
-        Task { @MainActor in
-          RunnyLiveSessionManager.shared.endLiveActivity()
-        }
+        let args = call.arguments as? [String: Any] ?? [:]
+        Self.endLive(from: args)
         result(nil)
       case "notifyLocal":
         let args = call.arguments as? [String: Any] ?? [:]
@@ -70,18 +69,22 @@ import UserNotifications
     let isRecording = args["isRecording"] as? Bool ?? false
     let type = args["activityType"] as? String ?? "Aktivite"
 
-    if action == "start" || (action == "update" && isRecording) {
-      // startWatchApp yalnızca start'ta
-      if action == "start" {
-        RunnyLiveSessionManager.shared.launchWatchApp(activityType: type)
-        startLive(from: args)
-      } else {
+    switch action {
+    case "start":
+      // Kayıt başı: Watch workout + Live Activity birlikte ayağa kalkar.
+      RunnyLiveSessionManager.shared.launchWatchApp(activityType: type)
+      startLive(from: args)
+    case "update", "sync", "health":
+      // Kayıt sürerken yalnızca güncelle / düşmüşse yeniden başlat.
+      // idle/stop dışı aksiyonlarda Live Activity'yi ASLA kapatma.
+      if isRecording {
         updateLive(from: args)
       }
-    } else if action == "stop" || (action == "idle" && !isRecording) {
-      Task { @MainActor in
-        RunnyLiveSessionManager.shared.endLiveActivity()
-      }
+    case "stop":
+      // Bitince yalnızca biz kapatırız.
+      endLive(from: args)
+    default:
+      break
     }
   }
 
@@ -103,6 +106,7 @@ import UserNotifications
   }
 
   private static func updateLive(from args: [String: Any]) {
+    let type = args["activityType"] as? String
     let elapsed = (args["elapsedSeconds"] as? NSNumber)?.intValue ?? 0
     let distance = (args["distanceMeters"] as? NSNumber)?.doubleValue ?? 0
     let hr = (args["heartRateBpm"] as? NSNumber)?.doubleValue
@@ -114,7 +118,23 @@ import UserNotifications
         distanceMeters: distance,
         heartRateBpm: hr,
         elevationGainMeters: elev,
-        isRecording: isRecording
+        isRecording: isRecording,
+        activityType: type
+      )
+    }
+  }
+
+  private static func endLive(from args: [String: Any]) {
+    let elapsed = (args["elapsedSeconds"] as? NSNumber)?.intValue
+    let distance = (args["distanceMeters"] as? NSNumber)?.doubleValue
+    let hr = (args["heartRateBpm"] as? NSNumber)?.doubleValue
+    let elev = (args["elevationGainMeters"] as? NSNumber)?.doubleValue
+    Task { @MainActor in
+      RunnyLiveSessionManager.shared.endLiveActivity(
+        elapsedSeconds: elapsed,
+        distanceMeters: distance,
+        heartRateBpm: hr,
+        elevationGainMeters: elev
       )
     }
   }

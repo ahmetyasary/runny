@@ -15,9 +15,15 @@ import '../../profile/data/profile_repository.dart';
 import '../../social/data/social_repository.dart';
 import '../../social/presentation/comments_sheet.dart';
 import '../../social/presentation/public_profile_page.dart';
+import 'notifications_page.dart';
 
 class FeedPage extends StatefulWidget {
-  const FeedPage({super.key});
+  const FeedPage({
+    super.key,
+    this.onOpenOwnProfile,
+  });
+
+  final VoidCallback? onOpenOwnProfile;
 
   @override
   State<FeedPage> createState() => FeedPageState();
@@ -32,7 +38,18 @@ class FeedPageState extends State<FeedPage> {
   int _pendingNewCount = 0;
   Set<String> _followingIds = {};
   final Set<String> _seenActivityIds = {};
+  final List<FeedNotificationItem> _notifications = [];
   RealtimeChannel? _feedChannel;
+
+  static String greetingForNow([DateTime? now]) {
+    final hour = (now ?? DateTime.now()).hour;
+    if (hour >= 5 && hour < 12) return 'Günaydın';
+    if (hour >= 12 && hour < 18) return 'İyi günler';
+    return 'İyi akşamlar';
+  }
+
+  int get _unreadNotificationCount =>
+      _notifications.where((n) => !n.isRead).length;
 
   @override
   void initState() {
@@ -91,8 +108,111 @@ class FeedPageState extends State<FeedPage> {
     if (!_followingIds.contains(userId)) return;
     if (_seenActivityIds.contains(activityId)) return;
 
+    _seenActivityIds.add(activityId);
+
+    final typeLabel = (row['type'] as String?) ?? 'Aktivite';
+    final title = (row['title'] as String?) ?? '$typeLabel aktivitesi';
+    final distanceMeters = (row['distance_meters'] as num?)?.toDouble();
+    final createdRaw = row['created_at'] as String?;
+    final createdAt = createdRaw != null
+        ? DateTime.tryParse(createdRaw)?.toLocal() ?? DateTime.now()
+        : DateTime.now();
+
     if (!mounted) return;
-    setState(() => _pendingNewCount += 1);
+    setState(() {
+      _pendingNewCount += 1;
+      _notifications.insert(
+        0,
+        FeedNotificationItem(
+          activityId: activityId,
+          userId: userId,
+          userName: 'Takip ettiğin biri',
+          activityType: typeLabel,
+          title: title,
+          createdAt: createdAt,
+          distanceKm:
+              distanceMeters == null ? null : distanceMeters / 1000,
+          isRead: false,
+        ),
+      );
+    });
+    unawaited(_enrichNotification(activityId, userId));
+  }
+
+  Future<void> _enrichNotification(String activityId, String userId) async {
+    final client = SupabaseService.client;
+    if (client == null) return;
+    try {
+      final profile = await SocialRepository(client).fetchProfileById(userId);
+      if (profile == null || !mounted) return;
+      setState(() {
+        final index =
+            _notifications.indexWhere((n) => n.activityId == activityId);
+        if (index < 0) return;
+        final prev = _notifications[index];
+        _notifications[index] = FeedNotificationItem(
+          activityId: prev.activityId,
+          userId: prev.userId,
+          userName: profile.name,
+          avatarUrl: profile.avatarUrl,
+          activityType: prev.activityType,
+          title: prev.title,
+          createdAt: prev.createdAt,
+          distanceKm: prev.distanceKm,
+          isRead: prev.isRead,
+        );
+      });
+    } catch (_) {}
+  }
+
+  void _syncNotificationsFromFeed(List<Activity> feed) {
+    final existingIds = _notifications.map((n) => n.activityId).toSet();
+    final unreadIds = _notifications
+        .where((n) => !n.isRead)
+        .map((n) => n.activityId)
+        .toSet();
+
+    final merged = <FeedNotificationItem>[
+      // Önce okunmamış (realtime) bildirimleri koru.
+      ..._notifications.where((n) => !n.isRead),
+    ];
+    final mergedIds = merged.map((n) => n.activityId).toSet();
+
+    for (final activity in feed) {
+      final userId = activity.userId;
+      if (userId == null) continue;
+      if (mergedIds.contains(activity.id)) continue;
+      merged.add(
+        FeedNotificationItem(
+          activityId: activity.id,
+          userId: userId,
+          userName: activity.userName,
+          activityType: activity.type.label,
+          title: activity.title,
+          createdAt: activity.startedAt ?? DateTime.now(),
+          distanceKm: activity.distance,
+          isRead: !unreadIds.contains(activity.id),
+        ),
+      );
+      mergedIds.add(activity.id);
+    }
+
+    // Eski okunmuşları da tut (feed'de yoksa silinmesin diye sınırlı).
+    for (final n in _notifications) {
+      if (mergedIds.contains(n.activityId)) continue;
+      if (existingIds.contains(n.activityId)) {
+        merged.add(n);
+        mergedIds.add(n.activityId);
+      }
+    }
+
+    merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    if (merged.length > 50) {
+      merged.removeRange(50, merged.length);
+    }
+    _notifications
+      ..clear()
+      ..addAll(merged);
   }
 
   Future<void> refresh({bool silent = false}) async {
@@ -107,6 +227,7 @@ class FeedPageState extends State<FeedPage> {
         _followingIds = {};
         _pendingNewCount = 0;
         _seenActivityIds.clear();
+        _notifications.clear();
         _loading = false;
       });
       return;
@@ -150,6 +271,7 @@ class FeedPageState extends State<FeedPage> {
         _seenActivityIds
           ..clear()
           ..addAll(feed.map((a) => a.id));
+        _syncNotificationsFromFeed(feed);
         _loading = false;
       });
       await _setupRealtime();
@@ -209,9 +331,37 @@ class FeedPageState extends State<FeedPage> {
     );
   }
 
+  Future<void> _openNotifications() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NotificationsPage(
+          items: List<FeedNotificationItem>.from(_notifications),
+          onMarkAllRead: () {
+            if (!mounted) return;
+            setState(() {
+              for (final n in _notifications) {
+                n.isRead = true;
+              }
+              _pendingNewCount = 0;
+            });
+          },
+          onOpenActivity: (_) {
+            // Profil sayfasına gider; akış banner'ı da temizlensin.
+            if (!mounted) return;
+            setState(() => _pendingNewCount = 0);
+          },
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final firstName = (_profile?.name ?? 'koşucu').split(' ').first;
+    final greeting = FeedPageState.greetingForNow();
+    final unread = _unreadNotificationCount;
 
     return RefreshIndicator(
       onRefresh: refresh,
@@ -230,7 +380,7 @@ class FeedPageState extends State<FeedPage> {
                         const RunnyLogo(height: 26),
                         const SizedBox(height: 14),
                         Text(
-                          'Günaydın, $firstName 👋',
+                          '$greeting, $firstName 👋',
                           style: const TextStyle(
                             color: AppColors.ink,
                             fontSize: 23,
@@ -246,26 +396,37 @@ class FeedPageState extends State<FeedPage> {
                     ),
                   ),
                   _RoundIconButton(
-                    icon: Icons.notifications_none_rounded,
-                    onPressed: () {},
+                    icon: unread > 0
+                        ? Icons.notifications_rounded
+                        : Icons.notifications_none_rounded,
+                    badgeCount: unread,
+                    onPressed: _openNotifications,
                   ),
                   const SizedBox(width: 9),
-                  CircleAvatar(
-                    radius: 21,
-                    backgroundColor: AppColors.softGreen,
-                    backgroundImage: _profile?.avatarUrl != null
-                        ? NetworkImage(_profile!.avatarUrl!)
-                        : null,
-                    child: _profile?.avatarUrl == null
-                        ? Text(
-                            _profile?.initials ?? 'RN',
-                            style: const TextStyle(
-                              color: AppColors.primaryDark,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 12,
-                            ),
-                          )
-                        : null,
+                  Material(
+                    color: Colors.transparent,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: widget.onOpenOwnProfile,
+                      child: CircleAvatar(
+                        radius: 21,
+                        backgroundColor: AppColors.softGreen,
+                        backgroundImage: _profile?.avatarUrl != null
+                            ? NetworkImage(_profile!.avatarUrl!)
+                            : null,
+                        child: _profile?.avatarUrl == null
+                            ? Text(
+                                _profile?.initials ?? 'RN',
+                                style: const TextStyle(
+                                  color: AppColors.primaryDark,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -835,10 +996,15 @@ class _Metric extends StatelessWidget {
 }
 
 class _RoundIconButton extends StatelessWidget {
-  const _RoundIconButton({required this.icon, required this.onPressed});
+  const _RoundIconButton({
+    required this.icon,
+    required this.onPressed,
+    this.badgeCount = 0,
+  });
 
   final IconData icon;
   final VoidCallback onPressed;
+  final int badgeCount;
 
   @override
   Widget build(BuildContext context) {
@@ -848,9 +1014,37 @@ class _RoundIconButton extends StatelessWidget {
       child: InkWell(
         onTap: onPressed,
         customBorder: const CircleBorder(),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Icon(icon, color: AppColors.ink, size: 21),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: Icon(icon, color: AppColors.ink, size: 21),
+            ),
+            if (badgeCount > 0)
+              Positioned(
+                right: 4,
+                top: 4,
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 16),
+                  height: 16,
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE15B64),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    badgeCount > 9 ? '9+' : '$badgeCount',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

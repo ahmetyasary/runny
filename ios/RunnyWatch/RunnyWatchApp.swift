@@ -201,6 +201,7 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
 
   func requestStop() {
     Task {
+      isRecording = false
       stopHealthTick()
       pushHealthToPhone()
       await health.stop()
@@ -213,7 +214,10 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
     stopHealthTick()
     healthTickTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
       Task { @MainActor in
-        self?.pushHealthToPhone()
+        guard let self else { return }
+        // Workout düştüyse kayıt sürerken yeniden ayağa kaldır.
+        self.ensureHealthRunning()
+        self.pushHealthToPhone()
       }
     }
   }
@@ -290,6 +294,33 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
 
   private func apply(_ context: [String: Any]) {
     Task { @MainActor in
+      let action = (context["action"] as? String) ?? (context["type"] as? String) ?? ""
+
+      // Telefondan gelen start/stop kesin sınır — yanlışlıkla kapanmayı engelle.
+      if action == "start" {
+        if let type = context["activityType"] as? String, !type.isEmpty {
+          self.activityType = type
+        }
+        let wasRecording = self.isRecording
+        self.isRecording = true
+        if !wasRecording {
+          self.cancelCountdown()
+          self.routeCoordinates = []
+          self.ensureHealthRunning()
+          self.announceRecordingStarted(remote: true)
+        } else {
+          self.ensureHealthRunning()
+        }
+      } else if action == "stop" {
+        let wasRecording = self.isRecording
+        self.isRecording = false
+        if wasRecording {
+          self.stopHealthTick()
+          await self.health.stop()
+          self.routeCoordinates = []
+        }
+      }
+
       if let type = context["activityType"] as? String, !type.isEmpty {
         self.activityType = type
       }
@@ -301,19 +332,22 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
       if let distance = context["distanceMeters"] as? Double {
         self.distanceMeters = distance
       }
-      if let recording = context["isRecording"] as? Bool {
-        let wasRecording = self.isRecording
-        self.isRecording = recording
-        if recording && !wasRecording {
-          self.cancelCountdown()
-          self.routeCoordinates = []
-          self.ensureHealthRunning()
-          self.announceRecordingStarted(remote: true)
-        } else if !recording && wasRecording {
-          self.stopHealthTick()
-          await self.health.stop()
-          self.routeCoordinates = []
-        } else if recording {
+      // health / update: yalnızca isRecording true iken workout'u ayakta tut;
+      // false gelince stop olmadan workout'u KESME (yanlış kapanmayı önler).
+      if action != "start", action != "stop", let recording = context["isRecording"] as? Bool {
+        if recording {
+          let wasRecording = self.isRecording
+          self.isRecording = true
+          if !wasRecording {
+            self.cancelCountdown()
+            self.routeCoordinates = []
+            self.ensureHealthRunning()
+            self.announceRecordingStarted(remote: true)
+          } else {
+            self.ensureHealthRunning()
+          }
+        } else if self.isRecording {
+          // idle / isRecording=false → workout'u durdurma; telefon stop göndermeli.
           self.ensureHealthRunning()
         }
       }

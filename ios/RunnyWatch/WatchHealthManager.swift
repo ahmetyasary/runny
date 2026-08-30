@@ -206,7 +206,24 @@ extension WatchHealthManager: HKWorkoutSessionDelegate {
     didChangeTo toState: HKWorkoutSessionState,
     from fromState: HKWorkoutSessionState,
     date: Date
-  ) {}
+  ) {
+    Task { @MainActor in
+      switch toState {
+      case .running:
+        self.isRunning = true
+      case .ended, .stopped:
+        // Beklenmedik kapanışta ensureHealthRunning yeniden başlatabilsin.
+        self.isRunning = false
+        self.session = nil
+        self.builder = nil
+        self.stopAltimeter()
+      case .paused:
+        break
+      default:
+        break
+      }
+    }
+  }
 
   nonisolated func workoutSession(
     _ workoutSession: HKWorkoutSession,
@@ -215,6 +232,9 @@ extension WatchHealthManager: HKWorkoutSessionDelegate {
     Task { @MainActor in
       self.statusMessage = "Workout hatası"
       self.isRunning = false
+      self.session = nil
+      self.builder = nil
+      self.stopAltimeter()
     }
   }
 }

@@ -49,3 +49,6 @@ app.*.map.json
 supabase/config.local.json
 supabase/.temp/
 ios/build/
+
+# local secrets
+.supabase-access-token

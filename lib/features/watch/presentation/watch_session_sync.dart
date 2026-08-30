@@ -5,15 +5,22 @@ import 'package:flutter/foundation.dart';
 import '../../activities/presentation/activity_session_controller.dart';
 import '../data/watch_bridge.dart';
 
-/// Aktivite oturumunu Apple Watch ile senkron tutar.
+/// Aktivite oturumunu Apple Watch + Live Activity ile senkron tutar.
+///
+/// Kayıt boyunca:
+/// - Live Activity / Watch metrikleri ~1 sn'de bir güncellenir
+/// - Watch uzaksa periyodik `startWatchApp` ile workout yeniden uyandırılır
+/// - Live Activity yalnızca `stop` ile kapanır (iOS tarafı)
 class WatchSessionSync {
   WatchSessionSync(this.session);
 
   final ActivitySessionController session;
   StreamSubscription<WatchEvent>? _watchSub;
-  Timer? _pushTimer;
   Timer? _statusTimer;
+  Timer? _heartbeatTimer;
+  Timer? _watchKeepAliveTimer;
   bool _started = false;
+  bool _wasRecording = false;
 
   Future<void> start() async {
     if (_started) return;
@@ -26,14 +33,19 @@ class WatchSessionSync {
       const Duration(seconds: 3),
       (_) => unawaited(_refreshWatchStatus()),
     );
-    await _push(action: 'sync');
+    // Uygulama açılışında kayıt yoksa Live Activity'ye dokunma.
+    if (session.isRecording) {
+      _wasRecording = true;
+      _startRecordingKeepAlives();
+      await _push(action: 'start');
+    }
   }
 
   void dispose() {
     session.removeListener(_onSessionChanged);
     _watchSub?.cancel();
-    _pushTimer?.cancel();
     _statusTimer?.cancel();
+    _stopRecordingKeepAlives();
   }
 
   Future<void> _refreshWatchStatus() async {
@@ -42,12 +54,54 @@ class WatchSessionSync {
   }
 
   void _onSessionChanged() {
-    _pushTimer?.cancel();
-    _pushTimer = Timer(const Duration(milliseconds: 400), () {
+    final recording = session.isRecording;
+    if (recording && !_wasRecording) {
+      _wasRecording = true;
+      _startRecordingKeepAlives();
+      // Controller zaten start gönderir; yine de emin ol.
+      unawaited(_push(action: 'start'));
       unawaited(
-        _push(action: session.isRecording ? 'update' : 'idle'),
+        WatchBridge.launchWatchWorkout(session.activityType ?? 'Koşu'),
       );
+    } else if (!recording && _wasRecording) {
+      _wasRecording = false;
+      _stopRecordingKeepAlives();
+      // Controller stop gönderir; ekstra idle ile LA kapatma.
+    }
+    // Kayıt sırasında metrikler heartbeat (1 sn) ile gider.
+  }
+
+  void _startRecordingKeepAlives() {
+    _heartbeatTimer?.cancel();
+    // Live Activity stale olmasın diye düzenli update.
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!session.isRecording) return;
+      unawaited(_push(action: 'update'));
     });
+
+    _watchKeepAliveTimer?.cancel();
+    // Watch workout düştüyse / saat uzağa düştüyse yeniden uyandır.
+    _watchKeepAliveTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      unawaited(_ensureWatchWorkoutAlive());
+    });
+  }
+
+  void _stopRecordingKeepAlives() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    _watchKeepAliveTimer?.cancel();
+    _watchKeepAliveTimer = null;
+  }
+
+  Future<void> _ensureWatchWorkoutAlive() async {
+    if (!session.isRecording) return;
+    final status = await WatchBridge.getStatus();
+    session.setWatchReachable(status.isConnected);
+    if (!status.isConnected) {
+      await WatchBridge.launchWatchWorkout(session.activityType ?? 'Koşu');
+      // Bağlantı gelince start payload tekrar gitsin.
+      await _push(action: 'start');
+    }
   }
 
   Future<void> notifyStarted() => _push(action: 'start');
@@ -59,10 +113,10 @@ class WatchSessionSync {
     final last = session.points.isEmpty ? null : session.points.last;
     await WatchBridge.sendSessionUpdate(
       action: action,
-      activityType: type,
+      activityType: type.isEmpty ? 'Aktivite' : type,
       elapsedSeconds: session.elapsed.inSeconds,
       distanceMeters: session.effectiveDistanceMeters,
-      isRecording: session.isRecording,
+      isRecording: session.isRecording || action == 'start',
       latitude: last?.latitude,
       longitude: last?.longitude,
       heartRateBpm: session.heartRateBpm,
@@ -98,10 +152,15 @@ class WatchSessionSync {
       case WatchEventType.healthUpdate:
         session.applyWatchHealth(event.payload);
         session.setWatchReachable(true);
-        // Live Activity metriklerini güncelle.
-        await _push(action: 'update');
+        // Live Activity metriklerini hemen tazele.
+        if (session.isRecording) {
+          await _push(action: 'update');
+        }
       case WatchEventType.statusChanged:
         await _refreshWatchStatus();
+        if (session.isRecording && !session.watchReachable) {
+          unawaited(_ensureWatchWorkoutAlive());
+        }
       case WatchEventType.pauseRequested:
       case WatchEventType.resumeRequested:
       case WatchEventType.unknown:
