@@ -32,6 +32,12 @@
 	<string>Runny, aktivite kaydı sırasında rotanı arka planda takip eder.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Runny, aktivitelerini ve rotanı kaydetmek için konumunu kullanır.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Runny, profil fotoğrafını çekmek için kamerayı kullanır.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Runny, profil fotoğrafı eklemek için galerine erişir.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Runny, seçtiğin fotoğrafı profiline eklemek için galerine erişir.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>Runny, saatteki workout oturumunu başlatmak ve sağlık verilerini eşlemek için Sağlık verilerine erişir.</string>
 	<key>NSHealthUpdateUsageDescription</key>

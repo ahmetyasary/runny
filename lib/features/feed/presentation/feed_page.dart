@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/config/supabase_config.dart';
 import '../../../core/models/activity.dart';
 import '../../../core/models/profile.dart';
+import '../../../core/models/profile_options.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/runny_logo.dart';
 import '../../../shared/widgets/route_preview.dart';
@@ -21,8 +25,14 @@ class FeedPage extends StatefulWidget {
 
 class FeedPageState extends State<FeedPage> {
   Profile? _profile;
-  List<Activity> _activities = demoActivities;
+  List<Activity> _activities = const [];
+  Map<String, ({double km, int count})> _weeklyProgress = const {};
   bool _loading = true;
+
+  int _pendingNewCount = 0;
+  Set<String> _followingIds = {};
+  final Set<String> _seenActivityIds = {};
+  RealtimeChannel? _feedChannel;
 
   @override
   void initState() {
@@ -30,17 +40,73 @@ class FeedPageState extends State<FeedPage> {
     refresh();
   }
 
+  @override
+  void dispose() {
+    unawaited(_teardownRealtime());
+    super.dispose();
+  }
+
+  Future<void> _teardownRealtime() async {
+    final channel = _feedChannel;
+    _feedChannel = null;
+    if (channel == null) return;
+    final client = SupabaseService.client;
+    if (client == null) return;
+    try {
+      await client.removeChannel(channel);
+    } catch (_) {}
+  }
+
+  Future<void> _setupRealtime() async {
+    final client = SupabaseService.client;
+    final uid = client?.auth.currentUser?.id;
+    if (client == null || uid == null) {
+      await _teardownRealtime();
+      return;
+    }
+
+    await _teardownRealtime();
+
+    final channel = client.channel('feed-activities-$uid');
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.insert,
+      schema: 'public',
+      table: 'activities',
+      callback: _onActivityInserted,
+    );
+    channel.subscribe();
+    _feedChannel = channel;
+  }
+
+  void _onActivityInserted(PostgresChangePayload payload) {
+    final row = payload.newRecord;
+    final activityId = row['id'] as String?;
+    final userId = row['user_id'] as String?;
+    final isPublic = row['is_public'] as bool? ?? true;
+    final me = SupabaseService.client?.auth.currentUser?.id;
+
+    if (activityId == null || userId == null) return;
+    if (userId == me) return;
+    if (!isPublic) return;
+    if (!_followingIds.contains(userId)) return;
+    if (_seenActivityIds.contains(activityId)) return;
+
+    if (!mounted) return;
+    setState(() => _pendingNewCount += 1);
+  }
+
   Future<void> refresh({bool silent = false}) async {
     final client = SupabaseService.client;
     if (client == null || client.auth.currentUser == null) {
+      await _teardownRealtime();
       if (!mounted) return;
       setState(() {
-        _profile = const Profile(
-          id: 'demo',
-          nickname: 'ahmetyasary',
-          displayName: 'Ahmet Yaşar',
-        );
-        _activities = demoActivities;
+        _profile = null;
+        _activities = const [];
+        _weeklyProgress = const {};
+        _followingIds = {};
+        _pendingNewCount = 0;
+        _seenActivityIds.clear();
         _loading = false;
       });
       return;
@@ -50,18 +116,51 @@ class FeedPageState extends State<FeedPage> {
       setState(() => _loading = true);
     }
     try {
-      final profile = await ProfileRepository(client).fetchCurrent();
-      final feed = await ActivityRepository(client).fetchFeed();
+      final profileRepo = ProfileRepository(client);
+      final activityRepo = ActivityRepository(client);
+      final social = SocialRepository(client);
+
+      Profile? profile;
+      Map<String, ({double km, int count})> weekly = const {};
+      List<Activity> feed = const [];
+      var following = <String>{};
+
+      try {
+        final results = await Future.wait([
+          profileRepo.fetchCurrent(),
+          activityRepo.fetchWeeklySportProgress(),
+          social.fetchFollowingIds(),
+        ]);
+        profile = results[0] as Profile?;
+        weekly = results[1] as Map<String, ({double km, int count})>;
+        following = results[2] as Set<String>;
+      } catch (_) {}
+
+      try {
+        feed = await activityRepo.fetchFeed();
+      } catch (_) {}
+
       if (!mounted) return;
       setState(() {
         _profile = profile;
+        _weeklyProgress = weekly;
         _activities = feed;
+        _followingIds = following;
+        _pendingNewCount = 0;
+        _seenActivityIds
+          ..clear()
+          ..addAll(feed.map((a) => a.id));
         _loading = false;
       });
+      await _setupRealtime();
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loadNewActivities() async {
+    await refresh(silent: true);
   }
 
   Future<void> _toggleLike(int index) async {
@@ -154,26 +253,46 @@ class FeedPageState extends State<FeedPage> {
                   CircleAvatar(
                     radius: 21,
                     backgroundColor: AppColors.softGreen,
-                    child: Text(
-                      _profile?.initials ?? 'RN',
-                      style: const TextStyle(
-                        color: AppColors.primaryDark,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                      ),
-                    ),
+                    backgroundImage: _profile?.avatarUrl != null
+                        ? NetworkImage(_profile!.avatarUrl!)
+                        : null,
+                    child: _profile?.avatarUrl == null
+                        ? Text(
+                            _profile?.initials ?? 'RN',
+                            style: const TextStyle(
+                              color: AppColors.primaryDark,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 12,
+                            ),
+                          )
+                        : null,
                   ),
                 ],
               ),
             ),
           ),
+          if (_pendingNewCount > 0)
+            SoftWrapToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: _NewActivitiesBanner(
+                  count: _pendingNewCount,
+                  onTap: _loadNewActivities,
+                ),
+              ),
+            ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
-            sliver: SliverToBoxAdapter(child: _WeeklyProgressCard()),
+            sliver: SliverToBoxAdapter(
+              child: _WeeklyProgressCard(
+                profile: _profile,
+                progress: _weeklyProgress,
+              ),
+            ),
           ),
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
-            sliver: SliverToBoxAdapter(
+            sliver: SoftWrapToBoxAdapter(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -199,13 +318,12 @@ class FeedPageState extends State<FeedPage> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_activities.isEmpty)
-            const SliverFillRemaining(
-              hasScrollBody: false,
+            const SoftWrapFillRemaining(
               child: Center(
                 child: Padding(
                   padding: EdgeInsets.all(32),
                   child: Text(
-                    'Henüz paylaşılmış aktivite yok.\nİlk rotanı kaydet ve paylaş!',
+                    'Henüz takip ettiğin kimse yok.\nKeşfet’ten insan bulup takip ettiğinde paylaşımları burada görünür.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: AppColors.mutedInk, height: 1.5),
                   ),
@@ -232,9 +350,176 @@ class FeedPageState extends State<FeedPage> {
   }
 }
 
-class _WeeklyProgressCard extends StatelessWidget {
+class SoftWrapToBoxAdapter extends StatelessWidget {
+  const SoftWrapToBoxAdapter({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => SliverToBoxAdapter(child: child);
+}
+
+class SoftWrapFillRemaining extends StatelessWidget {
+  const SoftWrapFillRemaining({super.key, required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) =>
+      SliverFillRemaining(hasScrollBody: false, child: child);
+}
+
+class _NewActivitiesBanner extends StatelessWidget {
+  const _NewActivitiesBanner({
+    required this.count,
+    required this.onTap,
+  });
+
+  final int count;
+  final Future<void> Function() onTap;
+
   @override
   Widget build(BuildContext context) {
+    final label =
+        count <= 1 ? 'Yeni aktiviteler' : 'Yeni aktiviteler ($count)';
+
+    return Material(
+      color: AppColors.primaryDark,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: () => onTap(),
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              const Icon(Icons.fiber_new_rounded, color: Colors.white, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              const Text(
+                'Yenile',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.keyboard_arrow_up_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WeeklyProgressCard extends StatelessWidget {
+  const _WeeklyProgressCard({
+    required this.profile,
+    required this.progress,
+  });
+
+  final Profile? profile;
+  final Map<String, ({double km, int count})> progress;
+
+  static String _formatKm(double value) {
+    final rounded = value == value.roundToDouble();
+    return value.toStringAsFixed(rounded ? 0 : 1);
+  }
+
+  /// Profilim'deki "Haftalık hedefler" ile aynı kaynak / aynı mantık.
+  List<_WeeklyGoalLine> _goalLines() {
+    final profile = this.profile;
+    if (profile == null) return const [];
+
+    final lines = <_WeeklyGoalLine>[];
+    final seen = <String>{};
+
+    // Önce seçili sporlar (Profil sırası), sonra ekstra hedefler.
+    final orderedIds = <String>[
+      ...profile.sports,
+      for (final id in profile.sportGoals.keys)
+        if (!profile.sports.contains(id)) id,
+    ];
+
+    for (final id in orderedIds) {
+      if (!seen.add(id)) continue;
+      final sport = sportById(id);
+      final goal = profile.sportGoals[id];
+      if (goal == null || !goal.hasTarget) continue;
+
+      final done = progress[id];
+      final useDistance =
+          (sport == null || sport.usesDistance) && goal.weeklyKm != null;
+
+      if (useDistance) {
+        final target = goal.weeklyKm!;
+        final current = done?.km ?? 0;
+        final ratio = target <= 0 ? 0.0 : (current / target).clamp(0.0, 1.0);
+        lines.add(
+          _WeeklyGoalLine(
+            label: sport?.label ?? id,
+            headline: '${_formatKm(current)} / ${_formatKm(target)} km',
+            progress: ratio,
+            activityCount: done?.count ?? 0,
+          ),
+        );
+      } else if (goal.weeklyCount != null && goal.weeklyCount! > 0) {
+        final target = goal.weeklyCount!;
+        final current = done?.count ?? 0;
+        final ratio = (current / target).clamp(0.0, 1.0);
+        lines.add(
+          _WeeklyGoalLine(
+            label: sport?.label ?? id,
+            headline: '$current / $target seans',
+            progress: ratio,
+            activityCount: current,
+          ),
+        );
+      }
+    }
+    return lines;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = _goalLines();
+    final totalActivities =
+        lines.fold<int>(0, (sum, line) => sum + line.activityCount);
+
+    // Tek kartta özet: birden fazla hedef varsa birleştirilmiş km/seans oranı.
+    late final String headline;
+    late final double ratio;
+    late final bool hasGoal;
+
+    if (lines.isEmpty) {
+      headline = 'Hedef yok';
+      ratio = 0;
+      hasGoal = false;
+    } else if (lines.length == 1) {
+      headline = lines.first.headline;
+      ratio = lines.first.progress;
+      hasGoal = true;
+    } else {
+      // Birden fazla hedef: ortalama tamamlanma + ilk hedefin metni öne.
+      ratio = lines.map((l) => l.progress).reduce((a, b) => a + b) /
+          lines.length;
+      headline = lines.map((l) => '${l.label}: ${l.headline}').join(' · ');
+      hasGoal = true;
+    }
+
+    final percent = (ratio * 100).round();
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -246,26 +531,44 @@ class _WeeklyProgressCard extends StatelessWidget {
         ),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Haftalık hedefin',
                       style: TextStyle(color: Colors.white70, fontSize: 13),
                     ),
-                    SizedBox(height: 5),
+                    const SizedBox(height: 5),
                     Text(
-                      '32,4 / 40 km',
-                      style: TextStyle(
+                      lines.length <= 1
+                          ? headline
+                          : '%$percent tamamlandı',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 24,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
+                    if (lines.length > 1) ...[
+                      const SizedBox(height: 8),
+                      for (final line in lines)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '${line.label}: ${line.headline}',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                    ],
                   ],
                 ),
               ),
@@ -286,24 +589,24 @@ class _WeeklyProgressCard extends StatelessWidget {
           const SizedBox(height: 18),
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: const LinearProgressIndicator(
-              value: .81,
+            child: LinearProgressIndicator(
+              value: hasGoal ? ratio : 0,
               minHeight: 8,
               backgroundColor: Colors.white24,
-              valueColor: AlwaysStoppedAnimation(Color(0xFFFFD166)),
+              valueColor: const AlwaysStoppedAnimation(Color(0xFFFFD166)),
             ),
           ),
           const SizedBox(height: 10),
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Bu hafta 4 aktivite',
-                style: TextStyle(color: Colors.white70, fontSize: 12),
+                'Bu hafta $totalActivities aktivite',
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
               Text(
-                '%81 tamamlandı',
-                style: TextStyle(
+                hasGoal ? '%$percent tamamlandı' : 'Profil’den hedef ekle',
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -315,6 +618,20 @@ class _WeeklyProgressCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _WeeklyGoalLine {
+  const _WeeklyGoalLine({
+    required this.label,
+    required this.headline,
+    required this.progress,
+    required this.activityCount,
+  });
+
+  final String label;
+  final String headline;
+  final double progress;
+  final int activityCount;
 }
 
 class _ActivityCard extends StatelessWidget {
@@ -417,6 +734,7 @@ class _ActivityCard extends StatelessWidget {
               height: 135,
               locationLabel: activity.location,
               accentColor: activity.type.color,
+              routePoints: activity.routePoints,
             ),
             const SizedBox(height: 13),
             Row(

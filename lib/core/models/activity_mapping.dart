@@ -63,6 +63,7 @@ abstract final class ActivityMapping {
     );
     final nickname = profile?['nickname'] as String? ?? 'runny';
     final displayName = profile?['display_name'] as String?;
+    final durationSeconds = (json['duration_seconds'] as num?)?.toInt() ?? 0;
 
     return Activity(
       id: json['id'] as String,
@@ -75,7 +76,7 @@ abstract final class ActivityMapping {
       title: json['title'] as String,
       location: (json['location_name'] as String?) ?? 'Konum yok',
       distance: ((json['distance_meters'] as num?)?.toDouble() ?? 0) / 1000,
-      duration: formatDuration((json['duration_seconds'] as num?)?.toInt() ?? 0),
+      duration: formatDuration(durationSeconds),
       when: relativeWhen(startedAt),
       likes: likeCount,
       comments: commentCount,
@@ -85,6 +86,8 @@ abstract final class ActivityMapping {
       avgHeartRate: (json['avg_heart_rate'] as num?)?.toInt(),
       maxHeartRate: (json['max_heart_rate'] as num?)?.toInt(),
       isLiked: isLiked,
+      durationSeconds: durationSeconds,
+      startedAt: startedAt.toLocal(),
     );
   }
 }

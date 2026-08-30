@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../../core/config/supabase_config.dart';
 import '../../../core/models/activity.dart';
@@ -58,6 +59,7 @@ class ActivityHistoryController extends ChangeNotifier {
     double elevationGainMeters = 0,
     int? avgHeartRate,
     int? maxHeartRate,
+    List<LatLng> routePoints = const [],
   }) {
     final user = SupabaseService.client?.auth.currentUser;
     final activity = Activity(
@@ -77,6 +79,9 @@ class ActivityHistoryController extends ChangeNotifier {
       elevationGainMeters: elevationGainMeters,
       avgHeartRate: avgHeartRate,
       maxHeartRate: maxHeartRate,
+      routePoints: routePoints,
+      durationSeconds: duration.inSeconds,
+      startedAt: DateTime.now().subtract(duration),
     );
 
     activities = [activity, ...activities.where((item) => item.id != id)];

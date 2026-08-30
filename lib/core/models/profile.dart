@@ -64,12 +64,13 @@ class Profile {
     int? activityCount,
     int? followerCount,
     int? followingCount,
+    bool clearAvatarUrl = false,
   }) {
     return Profile(
       id: id,
       nickname: nickname ?? this.nickname,
       displayName: displayName ?? this.displayName,
-      avatarUrl: avatarUrl ?? this.avatarUrl,
+      avatarUrl: clearAvatarUrl ? null : (avatarUrl ?? this.avatarUrl),
       bio: bio ?? this.bio,
       profession: profession ?? this.profession,
       age: age ?? this.age,

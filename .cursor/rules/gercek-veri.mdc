@@ -1,0 +1,14 @@
+---
+description: Runny'de asla dummy/demo veri kullanma; her zaman gerçek veri.
+alwaysApply: true
+---
+
+# Gerçek veri kuralı
+
+- Akış, Keşfet, Profil ve diğer listelerde **dummy / demo / sahte** veri kullanma.
+- `demoActivities`, sabit örnek kullanıcılar, uydurma rota/aktivite/takipçi **yasak**.
+- Veri yoksa ekran **boş** kalmalı (veya net boş durum metni); placeholder sahte içerik koyma.
+- Akış = yalnızca **takip edilenlerin** gerçek paylaşımları. Takip yoksa Akış boş.
+- Keşfet = yalnızca Supabase’ten gelen gerçek herkese açık aktiviteler / profiller.
+- Profil istatistikleri, haftalık hedefler, aktivite geçmişi = gerçek kullanıcı verisi.
+- Giriş yoksa veya Supabase bağlı değilse listeler boş kalsın; fake profil (ör. “Ahmet Yaşar”) basma.

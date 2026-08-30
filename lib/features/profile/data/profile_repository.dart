@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/models/profile.dart';
@@ -7,6 +9,8 @@ class ProfileRepository {
   const ProfileRepository(this.client);
 
   final SupabaseClient client;
+
+  static const _avatarBucket = 'avatars';
 
   Future<Profile?> fetchCurrent() async {
     final user = client.auth.currentUser;
@@ -50,6 +54,7 @@ class ProfileRepository {
     String? profession,
     int? age,
     String? location,
+    String? avatarUrl,
     List<String> sports = const [],
     List<String> equipment = const [],
     Map<String, SportGoal> sportGoals = const {},
@@ -70,24 +75,57 @@ class ProfileRepository {
         if (sportGoals[id]?.hasTarget == true) id: sportGoals[id]!,
     };
 
+    final payload = <String, dynamic>{
+      'nickname': cleaned,
+      'display_name': _nullable(displayName),
+      'bio': _nullable(bio),
+      'profession': _nullable(profession),
+      'age': age,
+      'location': _nullable(location),
+      'sports': sports,
+      'equipment': equipment,
+      'sport_goals': SportGoal.mapToJson(filteredGoals),
+    };
+    if (avatarUrl != null) {
+      payload['avatar_url'] = avatarUrl;
+    }
+
     final row = await client
         .from('profiles')
-        .update({
-          'nickname': cleaned,
-          'display_name': _nullable(displayName),
-          'bio': _nullable(bio),
-          'profession': _nullable(profession),
-          'age': age,
-          'location': _nullable(location),
-          'sports': sports,
-          'equipment': equipment,
-          'sport_goals': SportGoal.mapToJson(filteredGoals),
-        })
+        .update(payload)
         .eq('id', user.id)
         .select()
         .single();
 
     return Profile.fromJson(row);
+  }
+
+  /// Kameradan / galeriden seçilen bytes'ı yükler, public URL döner.
+  Future<String> uploadAvatar({
+    required Uint8List bytes,
+    String contentType = 'image/jpeg',
+  }) async {
+    final user = client.auth.currentUser;
+    if (user == null) {
+      throw StateError('Fotoğraf yüklemek için giriş yapılmalı.');
+    }
+
+    final ext = contentType.contains('png') ? 'png' : 'jpg';
+    final path = '${user.id}/avatar.$ext';
+
+    await client.storage.from(_avatarBucket).uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(
+            upsert: true,
+            contentType: contentType,
+            cacheControl: '3600',
+          ),
+        );
+
+    final publicUrl = client.storage.from(_avatarBucket).getPublicUrl(path);
+    // Cache-bust so UI refreshes immediately after replace.
+    return '$publicUrl?t=${DateTime.now().millisecondsSinceEpoch}';
   }
 
   Future<void> signOut() => client.auth.signOut();

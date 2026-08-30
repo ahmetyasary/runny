@@ -27,6 +27,7 @@ class DiscoverPageState extends State<DiscoverPage> {
   List<Profile> _suggested = const [];
   List<Activity> _routes = const [];
   List<Activity> _matchedRoutes = const [];
+  final Set<String> _followingIds = {};
 
   bool _loading = true;
   bool _searching = false;
@@ -52,7 +53,7 @@ class DiscoverPageState extends State<DiscoverPage> {
       if (!mounted) return;
       setState(() {
         _suggested = const [];
-        _routes = demoActivities;
+        _routes = const [];
         _loading = false;
         _error = null;
       });
@@ -71,15 +72,48 @@ class DiscoverPageState extends State<DiscoverPage> {
     try {
       final social = SocialRepository(client);
       final activities = ActivityRepository(client);
-      final results = await Future.wait([
-        social.fetchSuggestedProfiles(),
-        activities.fetchFeed(limit: 20),
-      ]);
+
+      // Ayrı yükle: biri hata verse diğeri yine görünsün.
+      List<Profile> suggested = const [];
+      List<Activity> routes = const [];
+      String? loadError;
+
+      try {
+        suggested = await social.fetchSuggestedProfiles();
+        // Takip durumlarını yükle (kartta buton için).
+        final ids = <String>{};
+        for (final person in suggested) {
+          try {
+            if (await social.isFollowing(person.id)) {
+              ids.add(person.id);
+            }
+          } catch (_) {}
+        }
+        if (mounted) {
+          setState(() {
+            _followingIds
+              ..clear()
+              ..addAll(ids);
+          });
+        }
+      } catch (_) {
+        loadError = 'Kişiler yüklenemedi.';
+      }
+
+      try {
+        routes = await activities.fetchPublic(limit: 20);
+      } catch (_) {
+        loadError = loadError == null
+            ? 'Aktiviteler yüklenemedi.'
+            : 'Keşfet kısmen yüklendi.';
+      }
+
       if (!mounted) return;
       setState(() {
-        _suggested = results[0] as List<Profile>;
-        _routes = results[1] as List<Activity>;
+        _suggested = suggested;
+        _routes = routes;
         _loading = false;
+        _error = loadError;
       });
     } catch (error) {
       if (!mounted) return;
@@ -188,13 +222,57 @@ class DiscoverPageState extends State<DiscoverPage> {
   }
 
   void _openProfile(String? userId) {
-    if (userId == null) return;
-    Navigator.push(
-      context,
+    if (userId == null || userId.isEmpty) return;
+    Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PublicProfilePage(profileId: userId),
       ),
     );
+  }
+
+  Future<void> _toggleFollow(Profile profile) async {
+    final client = SupabaseService.client;
+    if (client == null) return;
+    final wasFollowing = _followingIds.contains(profile.id);
+    setState(() {
+      if (wasFollowing) {
+        _followingIds.remove(profile.id);
+      } else {
+        _followingIds.add(profile.id);
+      }
+    });
+    try {
+      final following = await SocialRepository(client).toggleFollow(profile.id);
+      if (!mounted) return;
+      setState(() {
+        if (following) {
+          _followingIds.add(profile.id);
+        } else {
+          _followingIds.remove(profile.id);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            following
+                ? '${profile.name} takip ediliyor — paylaşımları Akış’ta görünür.'
+                : 'Takip bırakıldı.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        if (wasFollowing) {
+          _followingIds.add(profile.id);
+        } else {
+          _followingIds.remove(profile.id);
+        }
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Takip güncellenemedi: $error')),
+      );
+    }
   }
 
   @override
@@ -332,7 +410,7 @@ class DiscoverPageState extends State<DiscoverPage> {
         ),
         SliverToBoxAdapter(
           child: SizedBox(
-            height: 118,
+            height: 168,
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               scrollDirection: Axis.horizontal,
@@ -342,7 +420,9 @@ class DiscoverPageState extends State<DiscoverPage> {
                 final person = _suggested[index];
                 return _SuggestedPersonChip(
                   profile: person,
-                  onTap: () => _openProfile(person.id),
+                  isFollowing: _followingIds.contains(person.id),
+                  onOpen: () => _openProfile(person.id),
+                  onFollow: () => _toggleFollow(person),
                 );
               },
             ),
@@ -356,7 +436,7 @@ class DiscoverPageState extends State<DiscoverPage> {
             children: [
               const Expanded(
                 child: Text(
-                  'Son paylaşılanlar',
+                  'Öne çıkanlar',
                   style: TextStyle(
                     color: AppColors.ink,
                     fontSize: 18,
@@ -377,7 +457,7 @@ class DiscoverPageState extends State<DiscoverPage> {
           padding: EdgeInsets.fromLTRB(20, 8, 20, 40),
           sliver: SliverToBoxAdapter(
             child: Text(
-              'Henüz herkese açık aktivite yok.\nİlk rotanı kaydet ve paylaş!',
+              'Henüz öne çıkan aktivite yok.\nHerkese açık en uzun/yoğun rotalar burada görünür.',
               textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.mutedInk, height: 1.5),
             ),
@@ -517,60 +597,91 @@ class DiscoverPageState extends State<DiscoverPage> {
 class _SuggestedPersonChip extends StatelessWidget {
   const _SuggestedPersonChip({
     required this.profile,
-    required this.onTap,
+    required this.isFollowing,
+    required this.onOpen,
+    required this.onFollow,
   });
 
   final Profile profile;
-  final VoidCallback onTap;
+  final bool isFollowing;
+  final VoidCallback onOpen;
+  final VoidCallback onFollow;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
+    return Material(
+      color: Colors.white,
       borderRadius: BorderRadius.circular(18),
-      child: Container(
-        width: 96,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppColors.line),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: AppColors.softGreen,
-              child: Text(
-                profile.initials,
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: 118,
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.line),
+          ),
+          child: Column(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: AppColors.softGreen,
+                backgroundImage: profile.avatarUrl != null
+                    ? NetworkImage(profile.avatarUrl!)
+                    : null,
+                child: profile.avatarUrl == null
+                    ? Text(
+                        profile.initials,
+                        style: const TextStyle(
+                          color: AppColors.primaryDark,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                profile.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: AppColors.primaryDark,
-                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
                   fontSize: 12,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              profile.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.ink,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+              Text(
+                profile.handle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.mutedInk, fontSize: 10),
               ),
-            ),
-            Text(
-              profile.handle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.mutedInk, fontSize: 10),
-            ),
-          ],
+              const Spacer(),
+              SizedBox(
+                width: double.infinity,
+                height: 28,
+                child: FilledButton(
+                  onPressed: onFollow,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: isFollowing
+                        ? AppColors.mutedInk
+                        : AppColors.primaryDark,
+                    padding: EdgeInsets.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  child: Text(isFollowing ? 'Takiptesin' : 'Takip et'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -609,6 +720,7 @@ class _DiscoverActivityCard extends StatelessWidget {
                       height: 96,
                       showLabel: false,
                       accentColor: activity.type.color,
+                      routePoints: activity.routePoints,
                     ),
                   ),
                   const SizedBox(width: 12),

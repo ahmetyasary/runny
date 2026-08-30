@@ -21,6 +21,7 @@ class ActivityStopResult {
     this.elevationGainMeters = 0,
     this.avgHeartRateBpm,
     this.maxHeartRateBpm,
+    this.routePoints = const [],
   });
 
   final String message;
@@ -34,6 +35,7 @@ class ActivityStopResult {
   final double elevationGainMeters;
   final int? avgHeartRateBpm;
   final int? maxHeartRateBpm;
+  final List<LatLng> routePoints;
 }
 
 class ActivitySessionController extends ChangeNotifier {
@@ -302,6 +304,7 @@ class ActivitySessionController extends ChangeNotifier {
       elevationGainMeters: elevation,
       avgHeartRateBpm: avgHr,
       maxHeartRateBpm: maxHr,
+      routePoints: snapshotPoints,
     );
   }
 

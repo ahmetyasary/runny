@@ -130,6 +130,22 @@ class SocialRepository {
     return row != null;
   }
 
+  /// Takip edilen kullanıcı id listesi (Akış realtime filtresi için).
+  Future<Set<String>> fetchFollowingIds() async {
+    final uid = _uid;
+    if (uid == null) return {};
+
+    final rows = await client
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', uid);
+
+    return {
+      for (final row in rows)
+        if (row['following_id'] is String) row['following_id'] as String,
+    };
+  }
+
   Future<bool> toggleFollow(String profileId) async {
     final uid = _uid;
     if (uid == null) throw StateError('Takip için giriş gerekli.');
@@ -168,7 +184,7 @@ class SocialRepository {
     final rows = await client
         .from('profiles')
         .select()
-        .or('nickname.ilike."$pattern",display_name.ilike."$pattern"')
+        .or('nickname.ilike.$pattern,display_name.ilike.$pattern')
         .limit(limit);
 
     return rows.map(Profile.fromJson).toList();
@@ -177,15 +193,23 @@ class SocialRepository {
   /// Keşfet için önerilen kullanıcılar (kendisi hariç, yeni kayıtlar önce).
   Future<List<Profile>> fetchSuggestedProfiles({int limit = 12}) async {
     final uid = _uid;
-    final filter = client.from('profiles').select();
-    final rows = uid == null
-        ? await filter.order('created_at', ascending: false).limit(limit)
-        : await filter
-            .neq('id', uid)
-            .order('created_at', ascending: false)
-            .limit(limit);
-
-    return rows.map(Profile.fromJson).toList();
+    try {
+      final filter = client.from('profiles').select();
+      final rows = uid == null
+          ? await filter.order('created_at', ascending: false).limit(limit)
+          : await filter
+              .neq('id', uid)
+              .order('created_at', ascending: false)
+              .limit(limit);
+      return rows.map(Profile.fromJson).toList();
+    } catch (_) {
+      // created_at yoksa / sıra hatası: sırasız getir.
+      final filter = client.from('profiles').select();
+      final rows = uid == null
+          ? await filter.limit(limit)
+          : await filter.neq('id', uid).limit(limit);
+      return rows.map(Profile.fromJson).toList();
+    }
   }
 
   String _sanitizeSearch(String query) {
@@ -221,5 +245,33 @@ class SocialRepository {
       'follower_count': followerCount,
       'following_count': followingCount,
     });
+  }
+
+  Future<List<Profile>> fetchFollowers(String profileId) async {
+    final rows = await client
+        .from('follows')
+        .select('profiles:follower_id (*)')
+        .eq('following_id', profileId)
+        .order('created_at', ascending: false);
+
+    return [
+      for (final row in rows)
+        if (row['profiles'] is Map<String, dynamic>)
+          Profile.fromJson(Map<String, dynamic>.from(row['profiles'] as Map)),
+    ];
+  }
+
+  Future<List<Profile>> fetchFollowing(String profileId) async {
+    final rows = await client
+        .from('follows')
+        .select('profiles:following_id (*)')
+        .eq('follower_id', profileId)
+        .order('created_at', ascending: false);
+
+    return [
+      for (final row in rows)
+        if (row['profiles'] is Map<String, dynamic>)
+          Profile.fromJson(Map<String, dynamic>.from(row['profiles'] as Map)),
+    ];
   }
 }

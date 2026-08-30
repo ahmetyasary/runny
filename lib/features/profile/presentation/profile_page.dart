@@ -8,7 +8,10 @@ import '../../../core/models/sport_goal.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/route_preview.dart';
 import '../../activities/data/activity_repository.dart';
+import '../../activities/presentation/activity_detail_page.dart';
 import '../../activities/presentation/activity_history_controller.dart';
+import '../../social/presentation/profile_activities_page.dart';
+import '../../social/presentation/profile_connections_page.dart';
 import '../../watch/presentation/watch_status_page.dart';
 import '../data/profile_repository.dart';
 import 'edit_profile_page.dart';
@@ -152,10 +155,6 @@ class ProfilePageState extends State<ProfilePage> {
                   ),
                   const Spacer(),
                   IconButton(
-                    onPressed: () => _openEdit(profile),
-                    icon: const Icon(Icons.edit_outlined),
-                  ),
-                  IconButton(
                     onPressed: _showSettings,
                     icon: const Icon(Icons.settings_outlined),
                   ),
@@ -172,6 +171,42 @@ class ProfilePageState extends State<ProfilePage> {
                   final liveCount = history?.count ?? profile.activityCount;
                   return _Header(
                     profile: profile.copyWith(activityCount: liveCount),
+                    onActivities: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ProfileActivitiesPage(
+                            profileId: profile.id,
+                            isOwnProfile: true,
+                            title: 'Aktivitelerim',
+                          ),
+                        ),
+                      );
+                    },
+                    onFollowers: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ProfileConnectionsPage(
+                            profileId: profile.id,
+                            mode: ProfileConnectionMode.followers,
+                            title: 'Takipçiler',
+                          ),
+                        ),
+                      );
+                    },
+                    onFollowing: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ProfileConnectionsPage(
+                            profileId: profile.id,
+                            mode: ProfileConnectionMode.following,
+                            title: 'Takip',
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
               ),
@@ -369,9 +404,17 @@ class SoftWrapToBoxAdapter extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.profile});
+  const _Header({
+    required this.profile,
+    required this.onActivities,
+    required this.onFollowers,
+    required this.onFollowing,
+  });
 
   final Profile profile;
+  final VoidCallback onActivities;
+  final VoidCallback onFollowers;
+  final VoidCallback onFollowing;
 
   @override
   Widget build(BuildContext context) {
@@ -460,9 +503,21 @@ class _Header extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _Count(value: '${profile.activityCount}', label: 'Aktivite'),
-            _Count(value: '${profile.followerCount}', label: 'Takipçi'),
-            _Count(value: '${profile.followingCount}', label: 'Takip'),
+            _Count(
+              value: '${profile.activityCount}',
+              label: 'Aktivite',
+              onTap: onActivities,
+            ),
+            _Count(
+              value: '${profile.followerCount}',
+              label: 'Takipçi',
+              onTap: onFollowers,
+            ),
+            _Count(
+              value: '${profile.followingCount}',
+              label: 'Takip',
+              onTap: onFollowing,
+            ),
           ],
         ),
       ],
@@ -471,31 +526,40 @@ class _Header extends StatelessWidget {
 }
 
 class _Count extends StatelessWidget {
-  const _Count({required this.value, required this.label});
+  const _Count({
+    required this.value,
+    required this.label,
+    required this.onTap,
+  });
 
   final String value;
   final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: const TextStyle(
-              color: AppColors.ink,
-              fontSize: 17,
-              fontWeight: FontWeight.w800,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
             ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: const TextStyle(color: AppColors.mutedInk, fontSize: 11),
-          ),
-        ],
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: const TextStyle(color: AppColors.mutedInk, fontSize: 11),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -847,75 +911,102 @@ class _HistoryCard extends StatelessWidget {
         activity.location.isNotEmpty && activity.location != 'Konum yok';
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(activity.type.icon, color: activity.type.color, size: 18),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    activity.title,
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
-                Text(
-                  activity.when,
-                  style: const TextStyle(color: AppColors.mutedInk, fontSize: 11),
-                ),
-              ],
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ActivityDetailPage(activity: activity),
             ),
-            const SizedBox(height: 10),
-            RoutePreview(
-              height: 110,
-              showLabel: showLocation,
-              locationLabel: showLocation ? activity.location : null,
-              accentColor: activity.type.color,
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _Metric(icon: Icons.timer_outlined, value: activity.duration),
-                _Metric(
-                  icon: Icons.straighten_rounded,
-                  value: '${activity.distance.toStringAsFixed(2)} km',
-                ),
-                _Metric(
-                  icon: Icons.local_fire_department_outlined,
-                  value: '$calories kcal',
-                ),
-              ],
-            ),
-            if (showLocation) ...[
-              const SizedBox(height: 8),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
                 children: [
-                  const Icon(
-                    Icons.place_outlined,
-                    size: 14,
-                    color: AppColors.mutedInk,
-                  ),
-                  const SizedBox(width: 4),
+                  Icon(activity.type.icon, color: activity.type.color, size: 18),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      activity.location,
+                      activity.title,
                       style: const TextStyle(
-                        color: AppColors.mutedInk,
-                        fontSize: 12,
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
                       ),
                     ),
                   ),
+                  Text(
+                    activity.when,
+                    style: const TextStyle(color: AppColors.mutedInk, fontSize: 11),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: AppColors.mutedInk,
+                  ),
                 ],
               ),
+              const SizedBox(height: 10),
+              RoutePreview(
+                height: 110,
+                showLabel: showLocation,
+                locationLabel: showLocation ? activity.location : null,
+                accentColor: activity.type.color,
+                routePoints: activity.routePoints,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _Metric(icon: Icons.timer_outlined, value: activity.duration),
+                  _Metric(
+                    icon: Icons.straighten_rounded,
+                    value: '${activity.distance.toStringAsFixed(2)} km',
+                  ),
+                  _Metric(
+                    icon: Icons.local_fire_department_outlined,
+                    value: '$calories kcal',
+                  ),
+                ],
+              ),
+              if (activity.paceLabel != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.speed_rounded,
+                      size: 14,
+                      color: AppColors.mutedInk,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      activity.paceLabel!,
+                      style: const TextStyle(
+                        color: AppColors.mutedInk,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (activity.hasRoute) ...[
+                      const SizedBox(width: 12),
+                      Text(
+                        '${activity.routePoints.length} nokta',
+                        style: const TextStyle(
+                          color: AppColors.mutedInk,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/config/supabase_config.dart';
@@ -28,6 +31,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late Set<String> _sports;
   late Set<String> _equipment;
   final Map<String, TextEditingController> _goalControllers = {};
+  final _picker = ImagePicker();
+
+  String? _avatarUrl;
+  XFile? _localAvatar;
+  bool _removeAvatar = false;
   bool _isLoading = false;
   String? _error;
 
@@ -45,6 +53,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _bioController = TextEditingController(text: profile.bio ?? '');
     _sports = {...profile.sports};
     _equipment = {...profile.equipment};
+    _avatarUrl = profile.avatarUrl;
     for (final id in _sports) {
       _ensureGoalController(id, profile.sportGoals[id]);
     }
@@ -89,6 +98,88 @@ class _EditProfilePageState extends State<EditProfilePage> {
     return goals;
   }
 
+  Future<void> _pickAvatar(ImageSource source) async {
+    try {
+      final picked = await _picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (picked == null || !mounted) return;
+      setState(() {
+        _localAvatar = picked;
+        _removeAvatar = false;
+        _error = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = source == ImageSource.camera
+            ? 'Kamera açılamadı. İzinleri kontrol et.'
+            : 'Galeri açılamadı. İzinleri kontrol et.';
+      });
+    }
+  }
+
+  void _showPhotoOptions() {
+    final hasPhoto = _localAvatar != null ||
+        (!_removeAvatar && (_avatarUrl != null && _avatarUrl!.isNotEmpty));
+
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Fotoğraf çek'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAvatar(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Galeriden seç'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAvatar(ImageSource.gallery);
+              },
+            ),
+            if (hasPhoto)
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                title: const Text(
+                  'Fotoğrafı kaldır',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _localAvatar = null;
+                    _removeAvatar = true;
+                  });
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  ImageProvider? get _avatarImage {
+    if (_localAvatar != null) {
+      return FileImage(File(_localAvatar!.path));
+    }
+    if (!_removeAvatar && _avatarUrl != null && _avatarUrl!.isNotEmpty) {
+      return NetworkImage(_avatarUrl!);
+    }
+    return null;
+  }
+
   @override
   void dispose() {
     _nicknameController.dispose();
@@ -108,6 +199,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final selectedSports = profileSportOptions
         .where((sport) => _sports.contains(sport.id))
         .toList();
+    final avatarImage = _avatarImage;
 
     return Scaffold(
       appBar: AppBar(
@@ -127,6 +219,63 @@ class _EditProfilePageState extends State<EditProfilePage> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          Center(
+            child: Column(
+              children: [
+                GestureDetector(
+                  onTap: _isLoading ? null : _showPhotoOptions,
+                  child: Stack(
+                    alignment: Alignment.bottomRight,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: AppColors.primary.withValues(alpha: .35),
+                            width: 3,
+                          ),
+                        ),
+                        child: CircleAvatar(
+                          radius: 52,
+                          backgroundColor: AppColors.softGreen,
+                          backgroundImage: avatarImage,
+                          child: avatarImage == null
+                              ? Text(
+                                  widget.profile.initials,
+                                  style: const TextStyle(
+                                    color: AppColors.primaryDark,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: const BoxDecoration(
+                          color: AppColors.primaryDark,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextButton(
+                  onPressed: _isLoading ? null : _showPhotoOptions,
+                  child: const Text('Fotoğraf ekle veya değiştir'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
           const _Label('Kimlik'),
           const SizedBox(height: 8),
           TextField(
@@ -291,6 +440,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
           sports: _sports.toList(),
           equipment: _equipment.toList(),
           sportGoals: goals,
+          avatarUrl: _removeAvatar ? null : _avatarUrl,
+          clearAvatarUrl: _removeAvatar,
         ),
       );
       return;
@@ -308,7 +459,20 @@ class _EditProfilePageState extends State<EditProfilePage> {
         throw ArgumentError('Yaş 10–100 arasında olmalı.');
       }
 
-      final updated = await ProfileRepository(client).updateProfile(
+      final repo = ProfileRepository(client);
+      String? nextAvatarUrl;
+      if (_localAvatar != null) {
+        final bytes = await _localAvatar!.readAsBytes();
+        final mime = _localAvatar!.mimeType ?? 'image/jpeg';
+        nextAvatarUrl = await repo.uploadAvatar(
+          bytes: bytes,
+          contentType: mime,
+        );
+      } else if (_removeAvatar) {
+        nextAvatarUrl = '';
+      }
+
+      final updated = await repo.updateProfile(
         nickname: _nicknameController.text,
         displayName: _displayNameController.text,
         bio: _bioController.text,
@@ -318,9 +482,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
         sports: _sports.toList(),
         equipment: _equipment.toList(),
         sportGoals: goals,
+        avatarUrl: nextAvatarUrl,
       );
       if (!mounted) return;
       Navigator.pop(context, updated);
+    } on StorageException catch (error) {
+      setState(() {
+        _error = error.message.isNotEmpty
+            ? 'Fotoğraf yüklenemedi: ${error.message}'
+            : 'Fotoğraf yüklenemedi. Storage (avatars) bucket’ını kontrol et.';
+      });
     } on PostgrestException catch (error) {
       setState(() {
         _error = error.code == '23505'

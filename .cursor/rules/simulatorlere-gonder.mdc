@@ -1,0 +1,10 @@
+---
+description: Kullanıcı "Simulatörlere gönder" dediğinde iPhone sonra Watch başlatılır
+alwaysApply: true
+---
+
+Kullanıcı **"Simulatörlere gönder."** veya **"Simulatörlere gönder"** yazarsa:
+
+1. Skill `simulatorlere-gonder` talimatlarını uygula
+2. `bash scripts/launch_simulators.sh` çalıştır
+3. Sıra zorunlu: **önce iPhone, sonra Watch**

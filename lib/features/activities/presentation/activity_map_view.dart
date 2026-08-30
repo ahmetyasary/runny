@@ -15,11 +15,15 @@ class ActivityMapView extends StatefulWidget {
     required this.points,
     required this.initialCenter,
     this.onReady,
+    this.fitRoute = false,
+    this.interactive = true,
   });
 
   final List<ll.LatLng> points;
   final ll.LatLng initialCenter;
   final VoidCallback? onReady;
+  final bool fitRoute;
+  final bool interactive;
 
   @override
   State<ActivityMapView> createState() => ActivityMapViewState();
@@ -66,6 +70,52 @@ class ActivityMapViewState extends State<ActivityMapView> {
     _flutterMap?.move(point, zoom);
   }
 
+  Future<void> fitToRoute() async {
+    final route = widget.points;
+    if (route.length < 2) return;
+
+    var minLat = route.first.latitude;
+    var maxLat = route.first.latitude;
+    var minLng = route.first.longitude;
+    var maxLng = route.first.longitude;
+    for (final p in route) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+    // Tek nokta / çok kısa rota için padding
+    if ((maxLat - minLat).abs() < 1e-5) {
+      minLat -= 0.002;
+      maxLat += 0.002;
+    }
+    if ((maxLng - minLng).abs() < 1e-5) {
+      minLng -= 0.002;
+      maxLng += 0.002;
+    }
+
+    if (Platform.isIOS) {
+      await _apple?.moveCamera(
+        am.CameraUpdate.newLatLngBounds(
+          am.LatLngBounds(
+            southwest: am.LatLng(minLat, minLng),
+            northeast: am.LatLng(maxLat, maxLng),
+          ),
+          48,
+        ),
+      );
+      return;
+    }
+
+    final bounds = LatLngBounds(
+      ll.LatLng(minLat, minLng),
+      ll.LatLng(maxLat, maxLng),
+    );
+    _flutterMap?.fitCamera(
+      CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(36)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (Platform.isIOS) {
@@ -87,15 +137,20 @@ class ActivityMapViewState extends State<ActivityMapView> {
         zoom: 15.5,
       ),
       mapType: am.MapType.standard,
-      myLocationEnabled: true,
+      myLocationEnabled: widget.interactive,
       myLocationButtonEnabled: false,
-      compassEnabled: true,
-      rotateGesturesEnabled: true,
-      pitchGesturesEnabled: true,
+      compassEnabled: widget.interactive,
+      rotateGesturesEnabled: widget.interactive,
+      pitchGesturesEnabled: widget.interactive,
+      scrollGesturesEnabled: widget.interactive,
+      zoomGesturesEnabled: widget.interactive,
       trackingMode: am.TrackingMode.none,
-      onMapCreated: (controller) {
+      onMapCreated: (controller) async {
         _apple = controller;
         _ready = true;
+        if (widget.fitRoute) {
+          await fitToRoute();
+        }
         widget.onReady?.call();
       },
       polylines: route.length >= 2
@@ -111,8 +166,17 @@ class ActivityMapViewState extends State<ActivityMapView> {
             }
           : {},
       circles: {
+        if (route.isNotEmpty)
+          am.Circle(
+            circleId: am.CircleId('start'),
+            center: am.LatLng(route.first.latitude, route.first.longitude),
+            radius: 10,
+            fillColor: AppColors.orange,
+            strokeColor: Colors.white,
+            strokeWidth: 2,
+          ),
         am.Circle(
-          circleId: am.CircleId('me'),
+          circleId: am.CircleId('end'),
           center: am.LatLng(center.latitude, center.longitude),
           radius: 12,
           fillColor: AppColors.primaryDark.withValues(alpha: 0.95),
@@ -132,8 +196,16 @@ class ActivityMapViewState extends State<ActivityMapView> {
       options: MapOptions(
         initialCenter: center,
         initialZoom: 15.5,
-        onMapReady: () {
+        interactionOptions: InteractionOptions(
+          flags: widget.interactive
+              ? InteractiveFlag.all
+              : InteractiveFlag.none,
+        ),
+        onMapReady: () async {
           _ready = true;
+          if (widget.fitRoute) {
+            await fitToRoute();
+          }
           widget.onReady?.call();
         },
       ),
@@ -157,6 +229,19 @@ class ActivityMapViewState extends State<ActivityMapView> {
           ),
         MarkerLayer(
           markers: [
+            if (route.isNotEmpty)
+              Marker(
+                point: route.first,
+                width: 18,
+                height: 18,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.orange,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 3),
+                  ),
+                ),
+              ),
             Marker(
               point: center,
               width: 28,

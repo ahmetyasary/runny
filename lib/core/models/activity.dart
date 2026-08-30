@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
 enum ActivityType { run, walk, bike, hike, swim, trail, gym, yoga }
 
@@ -56,6 +57,9 @@ class Activity {
     this.avgHeartRate,
     this.maxHeartRate,
     this.isLiked = false,
+    this.routePoints = const [],
+    this.durationSeconds = 0,
+    this.startedAt,
   });
 
   final String id;
@@ -75,11 +79,28 @@ class Activity {
   final int? avgHeartRate;
   final int? maxHeartRate;
   final bool isLiked;
+  final List<LatLng> routePoints;
+  final int durationSeconds;
+  final DateTime? startedAt;
+
+  bool get hasRoute => routePoints.length >= 2;
+
+  /// dk/km tempo (mesafe yoksa null).
+  String? get paceLabel {
+    if (distance <= 0 || durationSeconds <= 0) return null;
+    final paceSeconds = (durationSeconds / distance).round();
+    final minutes = paceSeconds ~/ 60;
+    final secs = paceSeconds % 60;
+    return '$minutes:${secs.toString().padLeft(2, '0')} /km';
+  }
 
   Activity copyWith({
     int? likes,
     int? comments,
     bool? isLiked,
+    List<LatLng>? routePoints,
+    int? durationSeconds,
+    DateTime? startedAt,
   }) {
     return Activity(
       id: id,
@@ -99,51 +120,9 @@ class Activity {
       avgHeartRate: avgHeartRate,
       maxHeartRate: maxHeartRate,
       isLiked: isLiked ?? this.isLiked,
+      routePoints: routePoints ?? this.routePoints,
+      durationSeconds: durationSeconds ?? this.durationSeconds,
+      startedAt: startedAt ?? this.startedAt,
     );
   }
 }
-
-const demoActivities = [
-  Activity(
-    id: '1',
-    userName: 'Mert Kaya',
-    userHandle: '@mertkaya',
-    type: ActivityType.run,
-    title: 'Sabah koşusu',
-    location: 'Caddebostan Sahili',
-    distance: 8.42,
-    duration: '46:18',
-    when: '12 dk önce',
-    likes: 24,
-    comments: 3,
-    calories: 540,
-  ),
-  Activity(
-    id: '2',
-    userName: 'Buse Demir',
-    userHandle: '@busedemir',
-    type: ActivityType.bike,
-    title: 'Şehir turu',
-    location: 'İzmir, Kordon',
-    distance: 22.8,
-    duration: '1:24:06',
-    when: '2 saat önce',
-    likes: 41,
-    comments: 7,
-    calories: 780,
-  ),
-  Activity(
-    id: '3',
-    userName: 'Can Yıldız',
-    userHandle: '@canyildiz',
-    type: ActivityType.hike,
-    title: 'Hafta sonu rotası',
-    location: 'Belgrad Ormanı',
-    distance: 11.3,
-    duration: '2:18:42',
-    when: 'Dün',
-    likes: 68,
-    comments: 12,
-    calories: 920,
-  ),
-];

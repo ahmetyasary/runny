@@ -7,7 +7,10 @@ import '../../../core/models/profile_options.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/route_preview.dart';
 import '../../activities/data/activity_repository.dart';
+import '../../activities/presentation/activity_detail_page.dart';
 import '../data/social_repository.dart';
+import 'profile_activities_page.dart';
+import 'profile_connections_page.dart';
 
 class PublicProfilePage extends StatefulWidget {
   const PublicProfilePage({super.key, required this.profileId});
@@ -24,6 +27,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
   bool _loading = true;
   bool _following = false;
   bool _followBusy = false;
+  String? _error;
 
   @override
   void initState() {
@@ -34,27 +38,53 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
   Future<void> _load() async {
     final client = SupabaseService.client;
     if (client == null) {
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _error = 'Bağlantı yok.';
+      });
       return;
     }
 
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
     try {
       final social = SocialRepository(client);
       final profile = await social.fetchProfileById(widget.profileId);
-      final activities =
-          await ActivityRepository(client).fetchByUser(widget.profileId);
-      final following = await social.isFollowing(widget.profileId);
       if (!mounted) return;
+      if (profile == null) {
+        setState(() {
+          _profile = null;
+          _loading = false;
+          _error = 'Profil bulunamadı';
+        });
+        return;
+      }
+
       setState(() {
         _profile = profile;
-        _activities = activities;
-        _following = following;
         _loading = false;
       });
+
+      // Takip + aktiviteler profili engellemesin.
+      try {
+        final following = await social.isFollowing(widget.profileId);
+        if (mounted) setState(() => _following = following);
+      } catch (_) {}
+
+      try {
+        final activities =
+            await ActivityRepository(client).fetchByUser(widget.profileId);
+        if (mounted) setState(() => _activities = activities);
+      } catch (_) {}
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _error = 'Profil yüklenemedi';
+      });
     }
   }
 
@@ -69,15 +99,26 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
       setState(() {
         _following = following;
         _profile = _profile!.copyWith(
-          followerCount: _profile!.followerCount + (following ? 1 : -1),
+          followerCount:
+              (_profile!.followerCount + (following ? 1 : -1)).clamp(0, 1 << 30),
         );
         _followBusy = false;
       });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            following
+                ? '${_profile!.name} takip ediliyor. Paylaşımları Akış’ta görünür.'
+                : 'Takip bırakıldı.',
+          ),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() => _followBusy = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.toString())),
+        SnackBar(content: Text('Takip güncellenemedi: $error')),
       );
     }
   }
@@ -93,7 +134,16 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : profile == null
-              ? const Center(child: Text('Profil bulunamadı'))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      _error ?? 'Profil bulunamadı',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppColors.mutedInk),
+                    ),
+                  ),
+                )
               : ListView(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
                   children: [
@@ -101,14 +151,19 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                       child: CircleAvatar(
                         radius: 42,
                         backgroundColor: AppColors.softGreen,
-                        child: Text(
-                          profile.initials,
-                          style: const TextStyle(
-                            color: AppColors.primaryDark,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 22,
-                          ),
-                        ),
+                        backgroundImage: profile.avatarUrl != null
+                            ? NetworkImage(profile.avatarUrl!)
+                            : null,
+                        child: profile.avatarUrl == null
+                            ? Text(
+                                profile.initials,
+                                style: const TextStyle(
+                                  color: AppColors.primaryDark,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 22,
+                                ),
+                              )
+                            : null,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -147,14 +202,59 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _Stat('${profile.activityCount}', 'Aktivite'),
-                        _Stat('${profile.followerCount}', 'Takipçi'),
-                        _Stat('${profile.followingCount}', 'Takip'),
+                        _Stat(
+                          '${profile.activityCount}',
+                          'Aktivite',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ProfileActivitiesPage(
+                                  profileId: profile.id,
+                                  title: 'Aktiviteler',
+                                  isOwnProfile: isMe,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        _Stat(
+                          '${profile.followerCount}',
+                          'Takipçi',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ProfileConnectionsPage(
+                                  profileId: profile.id,
+                                  mode: ProfileConnectionMode.followers,
+                                  title: 'Takipçiler',
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        _Stat(
+                          '${profile.followingCount}',
+                          'Takip',
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ProfileConnectionsPage(
+                                  profileId: profile.id,
+                                  mode: ProfileConnectionMode.following,
+                                  title: 'Takip',
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       ],
                     ),
                     if (!isMe) ...[
                       const SizedBox(height: 16),
-                      FilledButton(
+                      FilledButton.icon(
                         onPressed: _followBusy ? null : _toggleFollow,
                         style: FilledButton.styleFrom(
                           backgroundColor: _following
@@ -162,7 +262,12 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                               : AppColors.primaryDark,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        child: Text(_following ? 'Takiptesin' : 'Takip et'),
+                        icon: Icon(
+                          _following
+                              ? Icons.check_rounded
+                              : Icons.person_add_alt_1_rounded,
+                        ),
+                        label: Text(_following ? 'Takiptesin' : 'Takip et'),
                       ),
                     ],
                     if (profile.sports.isNotEmpty) ...[
@@ -201,34 +306,51 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                     const SizedBox(height: 10),
                     if (_activities.isEmpty)
                       const Text(
-                        'Henüz public aktivite yok.',
+                        'Henüz herkese açık aktivite yok.',
                         style: TextStyle(color: AppColors.mutedInk),
                       )
                     else
                       for (final activity in _activities) ...[
                         Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  activity.title,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                  ),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      ActivityDetailPage(activity: activity),
                                 ),
-                                const SizedBox(height: 8),
-                                const RoutePreview(height: 90, showLabel: false),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '${activity.distance.toStringAsFixed(2)} km · ${activity.duration} · ${activity.location}',
-                                  style: const TextStyle(
-                                    color: AppColors.mutedInk,
-                                    fontSize: 12,
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    activity.title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 8),
+                                  RoutePreview(
+                                    height: 90,
+                                    showLabel: false,
+                                    accentColor: activity.type.color,
+                                    routePoints: activity.routePoints,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '${activity.distance.toStringAsFixed(2)} km · ${activity.duration} · ${activity.location}',
+                                    style: const TextStyle(
+                                      color: AppColors.mutedInk,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -241,29 +363,34 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat(this.value, this.label);
+  const _Stat(this.value, this.label, {required this.onTap});
 
   final String value;
   final String label;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.w800,
-              color: AppColors.ink,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
             ),
-          ),
-          Text(
-            label,
-            style: const TextStyle(color: AppColors.mutedInk, fontSize: 11),
-          ),
-        ],
+            Text(
+              label,
+              style: const TextStyle(color: AppColors.mutedInk, fontSize: 11),
+            ),
+          ],
+        ),
       ),
     );
   }

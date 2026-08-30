@@ -38,7 +38,7 @@ class _SplashScreenState extends State<SplashScreen>
     try {
       await SupabaseService.initialize();
     } catch (_) {
-      // AuthGate demo moda düşebilir; splash akışı bozulmasın.
+      // AuthGate Supabase yoksa HomeShell’e düşebilir; splash akışı bozulmasın.
     }
 
     final elapsed = DateTime.now().difference(started);
