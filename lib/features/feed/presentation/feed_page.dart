@@ -308,7 +308,9 @@ class FeedPageState extends State<FeedPage> {
 
       try {
         feed = await activityRepo.fetchFeed();
-      } catch (_) {}
+      } catch (error) {
+        debugPrint('Feed fetch failed: $error');
+      }
 
       if (!mounted) return;
       setState(() {
@@ -324,7 +326,8 @@ class FeedPageState extends State<FeedPage> {
         _loading = false;
       });
       await _setupRealtime();
-    } catch (_) {
+    } catch (error) {
+      debugPrint('Feed refresh failed: $error');
       if (!mounted) return;
       setState(() => _loading = false);
     }
@@ -530,9 +533,11 @@ class FeedPageState extends State<FeedPage> {
             SoftWrapFillRemaining(
               child: Center(
                 child: Padding(
-                  padding: EdgeInsets.all(32),
+                  padding: const EdgeInsets.all(32),
                   child: Text(
-                    'Henüz takip ettiğin kimse yok.\nKeşfet’ten insan bulup takip ettiğinde paylaşımları burada görünür.',
+                    _followingIds.isEmpty
+                        ? 'Henüz takip ettiğin kimse yok.\nKeşfet’ten insan bulup takip ettiğinde paylaşımları burada görünür.'
+                        : 'Takip ettiklerinin henüz herkese açık paylaşımı yok.\nYenile’ye basarak tekrar dene.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: AppColors.mutedInk, height: 1.5),
                   ),

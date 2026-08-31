@@ -36,7 +36,17 @@ abstract final class ActivityMapping {
     Map<String, dynamic> json, {
     String? currentUserId,
   }) {
-    final profile = json['profiles'] as Map<String, dynamic>?;
+    Map<String, dynamic>? profile;
+    final rawProfile = json['profiles'];
+    if (rawProfile is Map<String, dynamic>) {
+      profile = rawProfile;
+    } else if (rawProfile is Map) {
+      profile = Map<String, dynamic>.from(rawProfile);
+    } else if (rawProfile is List && rawProfile.isNotEmpty) {
+      final first = rawProfile.first;
+      if (first is Map) profile = Map<String, dynamic>.from(first);
+    }
+
     final likes = json['likes'];
     final comments = json['comments'];
 
@@ -58,9 +68,11 @@ abstract final class ActivityMapping {
     final commentCount = comments is List && comments.isNotEmpty
         ? (comments.first['count'] as num?)?.toInt() ?? comments.length
         : 0;
-    final startedAt = DateTime.parse(
-      (json['started_at'] ?? json['created_at']) as String,
-    );
+
+    final startedRaw = json['started_at'] ?? json['created_at'];
+    final startedAt = startedRaw is String
+        ? DateTime.tryParse(startedRaw) ?? DateTime.now()
+        : DateTime.now();
     final nickname = profile?['nickname'] as String? ?? 'runny';
     final displayName = profile?['display_name'] as String?;
     final durationSeconds = (json['duration_seconds'] as num?)?.toInt() ?? 0;
@@ -72,8 +84,8 @@ abstract final class ActivityMapping {
           ? displayName
           : nickname,
       userHandle: '@$nickname',
-      type: typeFromDb(json['type'] as String),
-      title: json['title'] as String,
+      type: typeFromDb((json['type'] as String?) ?? 'run'),
+      title: (json['title'] as String?) ?? 'Aktivite',
       location: (json['location_name'] as String?) ?? 'Konum yok',
       distance: ((json['distance_meters'] as num?)?.toDouble() ?? 0) / 1000,
       duration: formatDuration(durationSeconds),

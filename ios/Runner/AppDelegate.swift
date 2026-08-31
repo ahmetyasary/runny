@@ -179,11 +179,18 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
   func sendSessionUpdate(_ payload: [String: Any]) {
     guard let session, session.activationState == .activated else { return }
 
+    let action = (payload["action"] as? String) ?? ""
+    let isStop = action == "stop"
     try? session.updateApplicationContext(payload)
 
     if session.isReachable {
       session.sendMessage(payload, replyHandler: nil) { error in
         NSLog("Runny Watch sendMessage error: \(error.localizedDescription)")
+        session.transferUserInfo(payload)
+      }
+      // Stop kritik: reachable olsa bile kuyruğa da yaz.
+      if isStop {
+        session.transferUserInfo(payload)
       }
     } else {
       session.transferUserInfo(payload)

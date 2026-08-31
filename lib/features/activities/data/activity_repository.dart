@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -9,7 +10,23 @@ class ActivityRepository {
 
   final SupabaseClient client;
 
-  static const _select = '''
+  static const _selectBase = '''
+    id,
+    user_id,
+    type,
+    title,
+    location_name,
+    distance_meters,
+    duration_seconds,
+    calories,
+    started_at,
+    created_at,
+    profiles:user_id ( nickname, display_name ),
+    likes ( user_id ),
+    comments ( count )
+  ''';
+
+  static const _selectHealth = '''
     id,
     user_id,
     type,
@@ -27,6 +44,32 @@ class ActivityRepository {
     likes ( user_id ),
     comments ( count )
   ''';
+
+  /// Geriye uyumluluk için sağlık kolonlu select `_selectHealth`.
+
+  Future<List<Map<String, dynamic>>> _fetchActivityRows({
+    required Future<dynamic> Function(String columns) query,
+  }) async {
+    try {
+      final rows = await query(_selectHealth);
+      return List<Map<String, dynamic>>.from(rows as List);
+    } catch (error) {
+      debugPrint('Activity select (health) failed: $error');
+      try {
+        final rows = await query(_selectBase);
+        return List<Map<String, dynamic>>.from(rows as List);
+      } catch (fallbackError) {
+        debugPrint('Activity select (base) failed: $fallbackError');
+        // Embed/RLS sorunlarında sade kolonlarla dene.
+        const bare = '''
+          id, user_id, type, title, location_name, distance_meters,
+          duration_seconds, calories, started_at, created_at
+        ''';
+        final rows = await query(bare);
+        return List<Map<String, dynamic>>.from(rows as List);
+      }
+    }
+  }
 
   Future<String> createActivity({
     required String type,
@@ -113,13 +156,15 @@ class ActivityRepository {
         .toList();
     if (followingIds.isEmpty) return const [];
 
-    final rows = await client
-        .from('activities')
-        .select(_select)
-        .inFilter('user_id', followingIds)
-        .eq('is_public', true)
-        .order('started_at', ascending: false)
-        .limit(limit);
+    final rows = await _fetchActivityRows(
+      query: (columns) => client
+          .from('activities')
+          .select(columns)
+          .inFilter('user_id', followingIds)
+          .eq('is_public', true)
+          .order('started_at', ascending: false)
+          .limit(limit),
+    );
 
     final activities = rows
         .map((row) => ActivityMapping.fromSupabase(row, currentUserId: uid))
@@ -131,12 +176,14 @@ class ActivityRepository {
   /// (en uzun + en yoğun). Kendi aktivitelerin dahil edilmez.
   Future<List<Activity>> fetchPublic({int limit = 30}) async {
     final uid = client.auth.currentUser?.id;
-    final rows = await client
-        .from('activities')
-        .select(_select)
-        .eq('is_public', true)
-        .order('distance_meters', ascending: false)
-        .limit(250);
+    final rows = await _fetchActivityRows(
+      query: (columns) => client
+          .from('activities')
+          .select(columns)
+          .eq('is_public', true)
+          .order('distance_meters', ascending: false)
+          .limit(250),
+    );
 
     final mapped = rows
         .map((row) => ActivityMapping.fromSupabase(row, currentUserId: uid))
@@ -186,13 +233,15 @@ class ActivityRepository {
     if (cleaned.isEmpty) return const [];
 
     final pattern = '%$cleaned%';
-    final rows = await client
-        .from('activities')
-        .select(_select)
-        .eq('is_public', true)
-        .or('title.ilike.$pattern,location_name.ilike.$pattern')
-        .order('started_at', ascending: false)
-        .limit(limit);
+    final rows = await _fetchActivityRows(
+      query: (columns) => client
+          .from('activities')
+          .select(columns)
+          .eq('is_public', true)
+          .or('title.ilike.$pattern,location_name.ilike.$pattern')
+          .order('started_at', ascending: false)
+          .limit(limit),
+    );
 
     final uid = client.auth.currentUser?.id;
     return rows
@@ -204,32 +253,18 @@ class ActivityRepository {
     final user = client.auth.currentUser;
     if (user == null) return const [];
 
-    List<Activity> activities;
-    try {
-      final rows = await client
+    final rows = await _fetchActivityRows(
+      query: (columns) => client
           .from('activities')
-          .select(_select)
+          .select(columns)
           .eq('user_id', user.id)
           .order('started_at', ascending: false)
-          .limit(limit);
+          .limit(limit),
+    );
 
-      activities = rows
-          .map((row) => ActivityMapping.fromSupabase(row, currentUserId: user.id))
-          .toList();
-    } catch (_) {
-      final rows = await client
-          .from('activities')
-          .select(
-            'id, user_id, type, title, location_name, distance_meters, duration_seconds, calories, started_at, created_at',
-          )
-          .eq('user_id', user.id)
-          .order('started_at', ascending: false)
-          .limit(limit);
-
-      activities = rows
-          .map((row) => ActivityMapping.fromSupabase(row, currentUserId: user.id))
-          .toList();
-    }
+    final activities = rows
+        .map((row) => ActivityMapping.fromSupabase(row, currentUserId: user.id))
+        .toList();
 
     return attachRoutePoints(activities);
   }
@@ -286,13 +321,15 @@ class ActivityRepository {
   }
 
   Future<List<Activity>> fetchByUser(String userId, {int limit = 30}) async {
-    final rows = await client
-        .from('activities')
-        .select(_select)
-        .eq('user_id', userId)
-        .eq('is_public', true)
-        .order('started_at', ascending: false)
-        .limit(limit);
+    final rows = await _fetchActivityRows(
+      query: (columns) => client
+          .from('activities')
+          .select(columns)
+          .eq('user_id', userId)
+          .eq('is_public', true)
+          .order('started_at', ascending: false)
+          .limit(limit),
+    );
 
     final uid = client.auth.currentUser?.id;
     return rows

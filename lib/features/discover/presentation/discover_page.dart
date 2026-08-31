@@ -102,7 +102,8 @@ class DiscoverPageState extends State<DiscoverPage> {
 
       try {
         routes = await activities.fetchPublic(limit: 20);
-      } catch (_) {
+      } catch (error) {
+        debugPrint('Discover activities failed: $error');
         loadError = loadError == null
             ? 'Aktiviteler yüklenemedi.'
             : 'Keşfet kısmen yüklendi.';

@@ -162,6 +162,8 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
   private var elapsedTimer: Timer?
   private var recordingStartedAt: Date?
   private var lastOfflineSyncAt: Date?
+  /// Yerel/uzak stop sonrası telefondan gelen update ile yeniden başlamayı engelle.
+  private var ignoreRemoteStartUntil: Date?
   private var pendingSportLabel: String?
 
   override init() {
@@ -320,6 +322,7 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
     cancelCountdown()
     isRecording = true
     sessionOwner = "watch"
+    ignoreRemoteStartUntil = nil
     activityType = type
     distanceMeters = 0
     routeCoordinates = []
@@ -382,17 +385,28 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
 
   func requestStop() {
     Task {
-      // Bitirme özetini önce yakala; bağlantı yoksa transferUserInfo ile gider.
       let stopPayload = buildSnapshot(type: "stop", action: "stop")
       isRecording = false
       sessionOwner = nil
+      ignoreRemoteStartUntil = Date().addingTimeInterval(15)
       stopElapsedClock()
       stopHealthTick()
+      pushTimer?.invalidate()
+      pushTimer = nil
       await health.stop()
+      send(stopPayload, important: true)
+      // İkinci stop — kaçmasın.
       send(stopPayload, important: true)
       routeCoordinates = []
       lastOfflineSyncAt = nil
     }
+  }
+
+  private var shouldIgnoreRemoteStart: Bool {
+    guard let until = ignoreRemoteStartUntil else { return false }
+    if Date() < until { return true }
+    ignoreRemoteStartUntil = nil
+    return false
   }
 
   private func startHealthTick() {
@@ -489,7 +503,7 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
 
   /// Bağlantı geri gelince kaldığı yerden tek paket aktar.
   private func flushCatchUpToPhone() {
-    guard isRecording else { return }
+    guard isRecording, !shouldIgnoreRemoteStart else { return }
     lastOfflineSyncAt = Date()
     send(buildSnapshot(type: "sync", action: "sync"), important: true)
     NSLog("Runny Watch: reconnect sync elapsed=\(elapsedSeconds) dist=\(displayDistanceMeters)")
@@ -526,6 +540,10 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
 
       // Telefondan gelen start/stop kesin sınır — yanlışlıkla kapanmayı engelle.
       if action == "start" {
+        if self.shouldIgnoreRemoteStart {
+          NSLog("Runny Watch: ignore remote start (recent stop)")
+          return
+        }
         // Saat zaten asıl kayıttaysa telefon start'ı sahipliği çalmaz.
         if self.isWatchPrimary, self.isRecording {
           self.ensureHealthRunning()
@@ -559,12 +577,18 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
         let wasRecording = self.isRecording
         self.isRecording = false
         self.sessionOwner = nil
+        self.ignoreRemoteStartUntil = Date().addingTimeInterval(15)
+        self.pushTimer?.invalidate()
+        self.pushTimer = nil
+        self.stopElapsedClock()
+        self.stopHealthTick()
         if wasRecording {
-          self.stopElapsedClock()
-          self.stopHealthTick()
           await self.health.stop()
           self.routeCoordinates = []
         }
+        self.lastOfflineSyncAt = nil
+        NSLog("Runny Watch: stopped by remote")
+        return
       }
 
       if let type = context["activityType"] as? String, !type.isEmpty {
@@ -572,7 +596,7 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
       }
 
       // Süre: yalnızca telefon asılsa (veya sahiplik yokken) telefona uy.
-      if !self.isWatchPrimary {
+      if self.isRecording, !self.isWatchPrimary {
         if let elapsed = context["elapsedSeconds"] as? Int {
           self.syncElapsedFromPhone(elapsed)
         } else if let elapsed = context["elapsedSeconds"] as? Double {
@@ -581,41 +605,28 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
       }
 
       // Mesafe: telefon asılsa telefon GPS; saat asılsa yereli koru (health zaten yazar).
-      if !self.isWatchPrimary, let distance = context["distanceMeters"] as? Double {
+      if self.isRecording, !self.isWatchPrimary, let distance = context["distanceMeters"] as? Double {
         self.distanceMeters = distance
       }
 
-      // health / update: yalnızca isRecording true iken workout'u ayakta tut;
-      // false gelince stop olmadan workout'u KESME (yanlış kapanmayı önler).
+      // update/health: kayıt kapalıysa ASLA yeniden başlatma (özellikle stop sonrası).
       if action != "start", action != "stop", let recording = context["isRecording"] as? Bool {
         if recording {
-          let wasRecording = self.isRecording
-          self.isRecording = true
+          if self.shouldIgnoreRemoteStart {
+            NSLog("Runny Watch: ignore remote recording update (recent stop)")
+            return
+          }
+          if !self.isRecording {
+            // Kapalıyken update ile otomatik start yok — yalnızca telefon action=start.
+            return
+          }
           if self.sessionOwner == nil {
             self.sessionOwner = incomingOwner ?? "phone"
           }
-          if !wasRecording {
-            // Saat asılken telefonda update ile yeni kayıt açma.
-            if self.isWatchPrimary {
-              self.ensureHealthRunning()
-            } else {
-              self.cancelCountdown()
-              self.routeCoordinates = []
-              let phoneElapsed = (context["elapsedSeconds"] as? Int)
-                ?? (context["elapsedSeconds"] as? Double).map { Int($0) }
-                ?? 0
-              self.startElapsedClock(from: phoneElapsed)
-              self.ensureHealthRunning()
-              self.announceRecordingStarted(remote: true)
-            }
-          } else {
-            self.ensureHealthRunning()
-            if self.elapsedTimer == nil {
-              self.startElapsedClock(from: self.elapsedSeconds)
-            }
-          }
-        } else if self.isRecording {
           self.ensureHealthRunning()
+          if self.elapsedTimer == nil {
+            self.startElapsedClock(from: self.elapsedSeconds)
+          }
         }
       }
       var nextLat = self.latitude

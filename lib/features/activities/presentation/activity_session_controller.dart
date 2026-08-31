@@ -67,8 +67,19 @@ class ActivitySessionController extends ChangeNotifier {
   /// Aktiviteyi ilk başlatan cihaz — o taraf süre/mesafe için asıl kaynaktır.
   ActivitySessionOrigin? origin;
 
+  /// Yerel stop sonrası saatten gelen start/sync ile yeniden açılmayı engeller.
+  DateTime? _ignoreWatchStartUntil;
+
   bool get isWatchPrimary => origin == ActivitySessionOrigin.watch;
   bool get isPhonePrimary => origin == ActivitySessionOrigin.phone;
+
+  bool get isIgnoringWatchStart {
+    final until = _ignoreWatchStartUntil;
+    if (until == null) return false;
+    if (DateTime.now().isBefore(until)) return true;
+    _ignoreWatchStartUntil = null;
+    return false;
+  }
 
   bool get hasActiveSession =>
       isRecording || (points.isNotEmpty && elapsed > Duration.zero);
@@ -193,14 +204,22 @@ class ActivitySessionController extends ChangeNotifier {
     return null;
   }
 
-  /// Saat snapshot'ı: kayıt yoksa Watch-origin ile başlat.
-  Future<bool> adoptWatchSnapshot(Map<String, dynamic> payload) async {
+  /// Saat snapshot'ı.
+  /// [allowStart] yalnızca açık `start` / reconnect `sync` için true olmalı;
+  /// `health` asla yeni kayıt başlatmamalı (stop sonrası tekrar açılma bug'ı).
+  Future<bool> adoptWatchSnapshot(
+    Map<String, dynamic> payload, {
+    bool allowStart = false,
+  }) async {
     final type = payload['activityType'] as String? ?? activityType ?? 'Koşu';
     final recording = payload['isRecording'] as bool? ?? true;
     if (!recording) return false;
 
     var startedNow = false;
     if (!isRecording) {
+      if (!allowStart || isIgnoringWatchStart) {
+        return false;
+      }
       final ok = await start(
         type,
         origin: ActivitySessionOrigin.watch,
@@ -210,7 +229,6 @@ class ActivitySessionController extends ChangeNotifier {
       startedNow = true;
     }
 
-    // Telefon asıl ise saatten sadece sağlık metrikleri gelir.
     applyWatchHealth(payload);
 
     final watchElapsed = _readElapsedSeconds(payload);
@@ -341,6 +359,9 @@ class ActivitySessionController extends ChangeNotifier {
   }
 
   Future<ActivityStopResult> stop({bool save = true}) async {
+    // Stop anında saatten gelecek health/sync'in kaydı yeniden açmasını engelle.
+    _ignoreWatchStartUntil = DateTime.now().add(const Duration(seconds: 12));
+
     await _positionSubscription?.cancel();
     _positionSubscription = null;
     _timer?.cancel();
@@ -357,6 +378,7 @@ class ActivitySessionController extends ChangeNotifier {
     final avgHr = averageHeartRateBpm?.round();
     final maxHr = maxHeartRateBpm?.round();
     final localId = 'local_${DateTime.now().millisecondsSinceEpoch}';
+    final ownerName = origin?.name;
 
     var message = 'Aktivite kaydı tamamlandı.';
     String? cloudId;
@@ -385,7 +407,6 @@ class ActivitySessionController extends ChangeNotifier {
       }
     }
 
-    final ownerName = origin?.name;
     activityType = null;
     origin = null;
     points.clear();
@@ -396,6 +417,7 @@ class ActivitySessionController extends ChangeNotifier {
     notifyListeners();
 
     final last = snapshotPoints.isEmpty ? null : snapshotPoints.last;
+    // Stop'u birkaç yoldan gönder — kaçmasın.
     await WatchBridge.sendSessionUpdate(
       action: 'stop',
       activityType: typeLabel,
@@ -405,6 +427,14 @@ class ActivitySessionController extends ChangeNotifier {
       sessionOwner: ownerName,
       latitude: last?.latitude,
       longitude: last?.longitude,
+    );
+    await WatchBridge.sendSessionUpdate(
+      action: 'stop',
+      activityType: typeLabel,
+      elapsedSeconds: duration.inSeconds,
+      distanceMeters: distance,
+      isRecording: false,
+      sessionOwner: ownerName,
     );
 
     return ActivityStopResult(

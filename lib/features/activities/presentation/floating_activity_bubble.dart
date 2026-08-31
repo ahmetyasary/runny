@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
@@ -20,6 +22,19 @@ class FloatingActivityBubble extends StatefulWidget {
 
 class _FloatingActivityBubbleState extends State<FloatingActivityBubble> {
   Offset _offset = const Offset(16, 120);
+  bool _stopping = false;
+
+  Future<void> _stopFromBubble() async {
+    if (_stopping || !widget.session.isRecording) return;
+    setState(() => _stopping = true);
+    final result = await widget.session.stop(save: true);
+    await widget.onCompleted?.call(result);
+    if (!mounted) return;
+    setState(() => _stopping = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result.message)),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -95,10 +110,17 @@ class _FloatingActivityBubbleState extends State<FloatingActivityBubble> {
                           ),
                         ),
                       ),
-                      const Icon(
-                        Icons.open_in_full_rounded,
-                        color: Colors.white70,
-                        size: 16,
+                      InkWell(
+                        onTap: () => unawaited(_stopFromBubble()),
+                        borderRadius: BorderRadius.circular(12),
+                        child: const Padding(
+                          padding: EdgeInsets.all(4),
+                          child: Icon(
+                            Icons.stop_circle_rounded,
+                            color: Color(0xFFFF8A80),
+                            size: 22,
+                          ),
+                        ),
                       ),
                     ],
                   ),
