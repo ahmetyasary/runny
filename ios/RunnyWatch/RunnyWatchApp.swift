@@ -4,15 +4,52 @@ import WatchConnectivity
 import Combine
 import WatchKit
 import UserNotifications
+import HealthKit
+
+/// Telefondan `startWatchApp` → saati öne getirir; model henüz yoksa bekletir.
+enum WatchPhoneLaunchBridge {
+  static weak var model: WatchActivityModel?
+  static var pendingConfiguration: HKWorkoutConfiguration?
+
+  @MainActor
+  static func attach(_ model: WatchActivityModel) {
+    self.model = model
+    if let pending = pendingConfiguration {
+      pendingConfiguration = nil
+      model.adoptWorkoutConfiguration(pending)
+    }
+  }
+
+  @MainActor
+  static func handle(_ configuration: HKWorkoutConfiguration) {
+    if let model {
+      model.adoptWorkoutConfiguration(configuration)
+    } else {
+      pendingConfiguration = configuration
+    }
+  }
+}
+
+final class WatchAppDelegate: NSObject, WKApplicationDelegate {
+  func handle(_ workoutConfiguration: HKWorkoutConfiguration) {
+    Task { @MainActor in
+      WatchPhoneLaunchBridge.handle(workoutConfiguration)
+    }
+  }
+}
 
 @main
 struct RunnyWatchApp: App {
+  @WKApplicationDelegateAdaptor(WatchAppDelegate.self) var appDelegate
   @StateObject private var session = WatchActivityModel()
 
   var body: some Scene {
     WindowGroup {
       ContentView()
         .environmentObject(session)
+        .onAppear {
+          WatchPhoneLaunchBridge.attach(session)
+        }
     }
   }
 }
@@ -70,6 +107,7 @@ struct WatchRecentActivity: Identifiable, Hashable {
   let paceLabel: String?
   let whenLabel: String
   let location: String
+  let startedAt: Date?
 
   var sport: WatchSport {
     WatchSports.sport(forTypeKey: typeKey)
@@ -107,6 +145,7 @@ struct WatchRecentActivity: Identifiable, Hashable {
     let pace = dict["paceLabel"] as? String
     let when = (dict["when"] as? String) ?? ""
     let location = (dict["location"] as? String) ?? ""
+    let startedAt = parseDate(dict["startedAt"])
 
     return WatchRecentActivity(
       id: id,
@@ -122,8 +161,19 @@ struct WatchRecentActivity: Identifiable, Hashable {
       maxHeartRate: maxHr,
       paceLabel: pace,
       whenLabel: when,
-      location: location
+      location: location,
+      startedAt: startedAt
     )
+  }
+
+  private static func parseDate(_ raw: Any?) -> Date? {
+    if let date = raw as? Date { return date }
+    guard let text = raw as? String, !text.isEmpty else { return nil }
+    let iso = ISO8601DateFormatter()
+    iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = iso.date(from: text) { return date }
+    iso.formatOptions = [.withInternetDateTime]
+    return iso.date(from: text)
   }
 
   private static func formatDuration(_ seconds: Int) -> String {
@@ -179,6 +229,7 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
     }
     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     loadRecentActivitiesFromDisk()
+    WatchPhoneLaunchBridge.attach(self)
   }
 
   private static let recentActivitiesKey = "runny.recentActivities"
@@ -191,6 +242,7 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
   }
 
   private func persistRecentActivities() {
+    let iso = ISO8601DateFormatter()
     let encoded: [[String: Any]] = recentActivities.map { item in
       var map: [String: Any] = [
         "id": item.id,
@@ -208,6 +260,9 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
       if let avg = item.avgHeartRate { map["avgHeartRate"] = avg }
       if let max = item.maxHeartRate { map["maxHeartRate"] = max }
       if let pace = item.paceLabel { map["paceLabel"] = pace }
+      if let started = item.startedAt {
+        map["startedAt"] = iso.string(from: started)
+      }
       return map
     }
     UserDefaults.standard.set(encoded, forKey: Self.recentActivitiesKey)
@@ -217,8 +272,22 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
     let raw = context["activities"] as? [[String: Any]]
       ?? context["recentActivities"] as? [[String: Any]]
       ?? []
-    recentActivities = Array(raw.compactMap(WatchRecentActivity.fromDictionary).prefix(5))
+    let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+    let parsed = raw.compactMap(WatchRecentActivity.fromDictionary)
+    recentActivities = parsed.filter { item in
+      guard let started = item.startedAt else { return true }
+      return started >= cutoff
+    }
     persistRecentActivities()
+  }
+
+  /// Son 30 gün (grafik + liste).
+  var last30DaysActivities: [WatchRecentActivity] {
+    let cutoff = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
+    return recentActivities.filter { item in
+      guard let started = item.startedAt else { return true }
+      return started >= cutoff
+    }
   }
 
   var formattedElapsed: String {
@@ -393,6 +462,39 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
       distanceMeters = max(distanceMeters, distance)
     }
     ensureHealthRunning()
+  }
+
+  /// iPhone `startWatchApp` — uygulama öne gelir, kayıt ekranı açılır.
+  func adoptWorkoutConfiguration(_ configuration: HKWorkoutConfiguration) {
+    if shouldIgnoreRemoteStart {
+      NSLog("Runny Watch: ignore startWatchApp (recent stop)")
+      return
+    }
+
+    let label = WatchHealthManager.label(for: configuration.activityType)
+    activityType = label
+    let wasRecording = isRecording
+    isRecording = true
+    if sessionOwner == nil {
+      sessionOwner = "phone"
+    }
+    if !wasRecording {
+      cancelCountdown()
+      routeCoordinates = []
+      startElapsedClock(from: elapsedSeconds)
+      announceRecordingStarted(remote: true)
+    } else if elapsedTimer == nil {
+      startElapsedClock(from: elapsedSeconds)
+    }
+
+    Task {
+      if health.isRunning {
+        return
+      }
+      await health.start(configuration: configuration)
+      startHealthTick()
+    }
+    NSLog("Runny Watch: startWatchApp adopt type=\(label)")
   }
 
   private func announceRecordingStarted(remote: Bool) {
@@ -687,80 +789,397 @@ struct ContentView: View {
       } else if session.isCountingDown {
         CountdownView()
       } else {
-        SportPickerView()
+        WatchHomeView()
       }
     }
   }
 }
 
-struct SportPickerView: View {
+struct WatchHomeView: View {
   @EnvironmentObject private var session: WatchActivityModel
 
   var body: some View {
     NavigationStack {
-      List {
-        if !session.recentActivities.isEmpty {
-          Section {
-            ForEach(session.recentActivities) { activity in
-              NavigationLink {
-                RecentActivityDetailView(activity: activity)
-              } label: {
-                RecentActivityRow(activity: activity)
-              }
-            }
-          } header: {
-            Text("Son 5 aktivite")
+      VStack(spacing: 8) {
+        NavigationLink {
+          PastActivitiesView()
+        } label: {
+          HomeTile(
+            title: "Geçmiş",
+            subtitle: pastSubtitle,
+            symbol: "clock.arrow.circlepath",
+            tint: Color(red: 0.45, green: 0.55, blue: 0.95)
+          )
+        }
+        .buttonStyle(.plain)
+
+        NavigationLink {
+          StartActivityView()
+        } label: {
+          HomeTile(
+            title: "Başlat",
+            subtitle: "Aktivite seç",
+            symbol: "play.fill",
+            tint: Color(red: 0.29, green: 0.72, blue: 0.42)
+          )
+        }
+        .buttonStyle(.plain)
+      }
+      .padding(.horizontal, 4)
+      .navigationTitle("Runny")
+    }
+  }
+
+  private var pastSubtitle: String {
+    let count = session.last30DaysActivities.count
+    if count == 0 { return "Son 30 gün" }
+    return "\(count) · 30 gün"
+  }
+}
+
+struct HomeTile: View {
+  let title: String
+  let subtitle: String
+  let symbol: String
+  let tint: Color
+
+  var body: some View {
+    HStack(spacing: 10) {
+      ZStack {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+          .fill(tint.opacity(0.22))
+          .frame(width: 36, height: 36)
+        Image(systemName: symbol)
+          .font(.system(size: 15, weight: .semibold))
+          .foregroundStyle(tint)
+      }
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(title)
+          .font(.system(.headline, design: .rounded).weight(.bold))
+          .foregroundStyle(.primary)
+        Text(subtitle)
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
+
+      Spacer(minLength: 0)
+
+      Image(systemName: "chevron.right")
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(.tertiary)
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .fill(Color.white.opacity(0.08))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 16, style: .continuous)
+        .stroke(tint.opacity(0.35), lineWidth: 1)
+    )
+  }
+}
+
+struct PastActivitiesView: View {
+  @EnvironmentObject private var session: WatchActivityModel
+
+  private var activities: [WatchRecentActivity] {
+    session.last30DaysActivities
+  }
+
+  var body: some View {
+    List {
+      if activities.isEmpty {
+        Section {
+          VStack(alignment: .leading, spacing: 4) {
+            Text("Henüz aktivite yok")
+              .font(.caption.weight(.semibold))
+            Text("Son 30 gün telefondan senkron gelince burada görünür.")
+              .font(.caption2)
+              .foregroundStyle(.secondary)
           }
-        } else {
-          Section {
-            VStack(alignment: .leading, spacing: 4) {
-              Text("Henüz aktivite yok")
-                .font(.caption.weight(.semibold))
-              Text("Telefondan senkron gelince burada görünür.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 2)
-          } header: {
-            Text("Son aktiviteler")
-          }
+          .padding(.vertical, 2)
+        }
+      } else {
+        Section {
+          HistoryChartCard(
+            title: "Günlük",
+            subtitle: dailyTotalLabel,
+            bars: HistoryStats.dailyBars(from: activities),
+            accent: HistoryPalette.color(for: Date())
+          )
+          HistoryChartCard(
+            title: "Haftalık",
+            subtitle: weeklyTotalLabel,
+            bars: HistoryStats.weeklyBars(from: activities),
+            accent: HistoryPalette.color(for: Date())
+          )
+          HistoryChartCard(
+            title: "Aylık",
+            subtitle: monthlyTotalLabel,
+            bars: HistoryStats.monthlyBars(from: activities),
+            usePerBarMonthColors: true
+          )
+        } header: {
+          Text("Özet")
         }
 
         Section {
-          ForEach(WatchSports.all) { sport in
-            Button {
-              session.beginCountdown(type: sport.label)
+          ForEach(activities) { activity in
+            NavigationLink {
+              RecentActivityDetailView(activity: activity)
             } label: {
-              HStack(spacing: 10) {
-                ZStack {
-                  Circle()
-                    .fill(sport.tint.opacity(0.22))
-                    .frame(width: 30, height: 30)
-                  Image(systemName: sport.symbol)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(sport.tint)
-                }
-                Text(sport.label)
-                  .font(.system(.body, design: .rounded))
-                Spacer(minLength: 0)
-                Image(systemName: "play.fill")
-                  .font(.caption2)
-                  .foregroundStyle(.secondary)
-              }
+              RecentActivityRow(activity: activity)
             }
           }
         } header: {
-          Text("Yeni aktivite")
-        }
-      }
-      .navigationTitle("Runny")
-      .toolbar {
-        ToolbarItem(placement: .topBarTrailing) {
-          Image(systemName: "iphone")
-            .foregroundStyle(session.phoneReachable ? Color.green : Color.red)
+          Text("Son 30 gün · \(activities.count)")
         }
       }
     }
+    .navigationTitle("Geçmiş")
+  }
+
+  private var dailyTotalLabel: String {
+    let km = HistoryStats.dailyBars(from: activities).map(\.value).reduce(0, +)
+    return String(format: "%.1f km · 7 gün", km)
+  }
+
+  private var weeklyTotalLabel: String {
+    let km = HistoryStats.weeklyBars(from: activities).map(\.value).reduce(0, +)
+    return String(format: "%.1f km · 5 hf", km)
+  }
+
+  private var monthlyTotalLabel: String {
+    let km = HistoryStats.monthlyBars(from: activities).map(\.value).reduce(0, +)
+    return String(format: "%.1f km · aylar", km)
+  }
+}
+
+struct HistoryBar: Identifiable {
+  let id: String
+  let label: String
+  let value: Double
+  /// 1...12 for month-based coloring
+  let month: Int
+}
+
+enum HistoryPalette {
+  /// Her ay farklı renk skalası (1=Ocak … 12=Aralık).
+  static func color(forMonth month: Int, intensity: Double = 1) -> Color {
+    let hues: [Double] = [
+      0.00, 0.08, 0.16, 0.28, 0.38, 0.48,
+      0.58, 0.68, 0.78, 0.86, 0.92, 0.96,
+    ]
+    let index = max(0, min(11, month - 1))
+    let t = max(0.35, min(1, intensity))
+    return Color(
+      hue: hues[index],
+      saturation: 0.62,
+      brightness: 0.55 + 0.35 * t
+    )
+  }
+
+  static func color(for date: Date) -> Color {
+    let month = Calendar.current.component(.month, from: date)
+    return color(forMonth: month)
+  }
+}
+
+enum HistoryStats {
+  static func dailyBars(from activities: [WatchRecentActivity]) -> [HistoryBar] {
+    let cal = Calendar.current
+    let today = cal.startOfDay(for: Date())
+    return (0..<7).reversed().map { offset in
+      let day = cal.date(byAdding: .day, value: -offset, to: today) ?? today
+      let next = cal.date(byAdding: .day, value: 1, to: day) ?? day
+      let km = activities
+        .filter { act in
+          guard let started = act.startedAt else { return false }
+          return started >= day && started < next
+        }
+        .reduce(0.0) { $0 + $1.distanceKm }
+      let label: String = {
+        if offset == 0 { return "Bu" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "tr_TR")
+        formatter.dateFormat = "EE"
+        return String(formatter.string(from: day).prefix(2))
+      }()
+      return HistoryBar(
+        id: "d-\(offset)",
+        label: label,
+        value: km,
+        month: cal.component(.month, from: day)
+      )
+    }
+  }
+
+  static func weeklyBars(from activities: [WatchRecentActivity]) -> [HistoryBar] {
+    let cal = Calendar.current
+    let today = cal.startOfDay(for: Date())
+    return (0..<5).reversed().map { offset in
+      let end = cal.date(byAdding: .day, value: -offset * 7, to: today) ?? today
+      let start = cal.date(byAdding: .day, value: -6, to: end) ?? end
+      let weekStart = cal.startOfDay(for: start)
+      let weekEndExclusive = cal.date(byAdding: .day, value: 1, to: end) ?? end
+      let km = activities
+        .filter { act in
+          guard let started = act.startedAt else { return false }
+          return started >= weekStart && started < weekEndExclusive
+        }
+        .reduce(0.0) { $0 + $1.distanceKm }
+      let label = offset == 0 ? "Bu" : "-\(offset)"
+      return HistoryBar(
+        id: "w-\(offset)",
+        label: label,
+        value: km,
+        month: cal.component(.month, from: end)
+      )
+    }
+  }
+
+  static func monthlyBars(from activities: [WatchRecentActivity]) -> [HistoryBar] {
+    let cal = Calendar.current
+    let now = Date()
+    // Son 30 gün içindeki ay kesitleri (en fazla 2 ay) + önceki ay bağlamı için 3 slot.
+    return (0..<3).reversed().map { offset in
+      guard let monthDate = cal.date(byAdding: .month, value: -offset, to: now) else {
+        return HistoryBar(id: "m-\(offset)", label: "—", value: 0, month: 1)
+      }
+      let comps = cal.dateComponents([.year, .month], from: monthDate)
+      let monthStart = cal.date(from: comps) ?? monthDate
+      let monthEnd = cal.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+      let km = activities
+        .filter { act in
+          guard let started = act.startedAt else { return false }
+          return started >= monthStart && started < monthEnd
+        }
+        .reduce(0.0) { $0 + $1.distanceKm }
+      let formatter = DateFormatter()
+      formatter.locale = Locale(identifier: "tr_TR")
+      formatter.dateFormat = "MMM"
+      let label = formatter.string(from: monthStart)
+      let month = comps.month ?? 1
+      return HistoryBar(
+        id: "m-\(month)-\(comps.year ?? 0)",
+        label: String(label.prefix(3)),
+        value: km,
+        month: month
+      )
+    }
+  }
+}
+
+struct HistoryChartCard: View {
+  let title: String
+  let subtitle: String
+  let bars: [HistoryBar]
+  var accent: Color = .green
+  var usePerBarMonthColors: Bool = false
+
+  private var maxValue: Double {
+    max(bars.map(\.value).max() ?? 0, 0.1)
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      HStack(alignment: .firstTextBaseline) {
+        Text(title)
+          .font(.system(.caption, design: .rounded).weight(.bold))
+        Spacer(minLength: 0)
+        Text(subtitle)
+          .font(.system(size: 10, weight: .medium, design: .rounded))
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
+
+      HStack(alignment: .bottom, spacing: 3) {
+        ForEach(bars) { bar in
+          VStack(spacing: 2) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+              .fill(barColor(for: bar))
+              .frame(maxWidth: .infinity)
+              .frame(height: max(4, CGFloat(bar.value / maxValue) * 44))
+            Text(bar.label)
+              .font(.system(size: 8, weight: .semibold, design: .rounded))
+              .foregroundStyle(.secondary)
+              .lineLimit(1)
+              .minimumScaleFactor(0.7)
+          }
+          .frame(maxWidth: .infinity)
+        }
+      }
+      .frame(height: 58, alignment: .bottom)
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 8)
+    .background(
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .fill(Color.white.opacity(0.08))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .stroke(cardStroke, lineWidth: 1)
+    )
+    .listRowBackground(Color.clear)
+    .listRowInsets(EdgeInsets(top: 4, leading: 2, bottom: 4, trailing: 2))
+  }
+
+  private var cardStroke: Color {
+    if usePerBarMonthColors {
+      return HistoryPalette.color(for: Date()).opacity(0.35)
+    }
+    return accent.opacity(0.4)
+  }
+
+  private func barColor(for bar: HistoryBar) -> Color {
+    if usePerBarMonthColors {
+      let intensity = bar.value <= 0 ? 0.35 : min(1, 0.45 + bar.value / maxValue)
+      return HistoryPalette.color(forMonth: bar.month, intensity: intensity)
+    }
+    let intensity = bar.value <= 0 ? 0.25 : min(1, 0.4 + bar.value / maxValue)
+    return accent.opacity(0.35 + 0.55 * intensity)
+  }
+}
+
+struct StartActivityView: View {
+  @EnvironmentObject private var session: WatchActivityModel
+
+  var body: some View {
+    List {
+      Section {
+        ForEach(WatchSports.all) { sport in
+          Button {
+            session.beginCountdown(type: sport.label)
+          } label: {
+            HStack(spacing: 10) {
+              ZStack {
+                Circle()
+                  .fill(sport.tint.opacity(0.22))
+                  .frame(width: 30, height: 30)
+                Image(systemName: sport.symbol)
+                  .font(.system(size: 13, weight: .semibold))
+                  .foregroundStyle(sport.tint)
+              }
+              Text(sport.label)
+                .font(.system(.body, design: .rounded))
+              Spacer(minLength: 0)
+              Image(systemName: "play.fill")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+          }
+        }
+      } header: {
+        Text("Aktivite seç")
+      }
+    }
+    .navigationTitle("Başlat")
   }
 }
 

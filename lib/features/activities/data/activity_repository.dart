@@ -46,28 +46,34 @@ class ActivityRepository {
   ''';
 
   /// Geriye uyumluluk için sağlık kolonlu select `_selectHealth`.
+  static bool? _healthColumnsAvailable;
 
   Future<List<Map<String, dynamic>>> _fetchActivityRows({
     required Future<dynamic> Function(String columns) query,
   }) async {
-    try {
-      final rows = await query(_selectHealth);
-      return List<Map<String, dynamic>>.from(rows as List);
-    } catch (error) {
-      debugPrint('Activity select (health) failed: $error');
+    if (_healthColumnsAvailable != false) {
       try {
-        final rows = await query(_selectBase);
+        final rows = await query(_selectHealth);
+        _healthColumnsAvailable = true;
         return List<Map<String, dynamic>>.from(rows as List);
-      } catch (fallbackError) {
-        debugPrint('Activity select (base) failed: $fallbackError');
-        // Embed/RLS sorunlarında sade kolonlarla dene.
-        const bare = '''
+      } catch (error) {
+        _healthColumnsAvailable = false;
+        debugPrint('Activity select (health) failed: $error');
+      }
+    }
+
+    try {
+      final rows = await query(_selectBase);
+      return List<Map<String, dynamic>>.from(rows as List);
+    } catch (fallbackError) {
+      debugPrint('Activity select (base) failed: $fallbackError');
+      // Embed/RLS sorunlarında sade kolonlarla dene.
+      const bare = '''
           id, user_id, type, title, location_name, distance_meters,
           duration_seconds, calories, started_at, created_at
         ''';
-        final rows = await query(bare);
-        return List<Map<String, dynamic>>.from(rows as List);
-      }
+      final rows = await query(bare);
+      return List<Map<String, dynamic>>.from(rows as List);
     }
   }
 

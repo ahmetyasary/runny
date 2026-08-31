@@ -31,7 +31,7 @@ class ActivityHistoryController extends ChangeNotifier {
 
     try {
       final repo = ActivityRepository(client);
-      final remote = await repo.fetchMine();
+      final remote = await repo.fetchMine(limit: 100);
       final stats = await repo.fetchMyStats();
 
       // Uzak veri gelince lokal önbelleği onunla değiştir.

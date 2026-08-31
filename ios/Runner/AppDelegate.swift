@@ -13,6 +13,7 @@ import UserNotifications
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     RunnyLiveSessionManager.shared.requestNotificationPermission()
+    RunnyLiveSessionManager.shared.prepareHealthKitForWatchLaunch()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

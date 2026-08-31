@@ -1,10 +1,24 @@
 import '../../../core/models/activity.dart';
 import 'watch_bridge.dart';
 
-/// Telefon aktivitelerini Watch özet formatına çevirir.
+/// Telefon aktivitelerini Watch özet formatına çevirir (son 30 gün).
 abstract final class WatchRecentActivitiesSync {
-  static Future<void> push(List<Activity> activities, {int limit = 5}) async {
-    final items = activities.take(limit).map(_toMap).toList(growable: false);
+  static Future<void> push(
+    List<Activity> activities, {
+    int days = 30,
+    int maxItems = 80,
+  }) async {
+    final cutoff = DateTime.now().toUtc().subtract(Duration(days: days));
+    final filtered = activities.where((activity) {
+      final started = activity.startedAt?.toUtc();
+      if (started == null) return true;
+      return !started.isBefore(cutoff);
+    }).toList(growable: false);
+
+    final items = filtered
+        .take(maxItems)
+        .map(_toMap)
+        .toList(growable: false);
     await WatchBridge.syncRecentActivities(items);
   }
 

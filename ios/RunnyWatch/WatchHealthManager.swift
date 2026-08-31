@@ -61,21 +61,25 @@ final class WatchHealthManager: NSObject, ObservableObject {
   }
 
   func start(activityLabel: String) async {
+    let config = HKWorkoutConfiguration()
+    config.activityType = Self.mapActivity(activityLabel)
+    config.locationType = Self.isIndoor(activityLabel) ? .indoor : .outdoor
+    await start(configuration: config)
+  }
+
+  /// Telefondan `startWatchApp` ile gelen konfigürasyon — saati öne getirir.
+  func start(configuration: HKWorkoutConfiguration) async {
     await requestAuthorization()
     guard !isRunning else { return }
 
     resetMetrics()
 
-    let config = HKWorkoutConfiguration()
-    config.activityType = Self.mapActivity(activityLabel)
-    config.locationType = Self.isIndoor(activityLabel) ? .indoor : .outdoor
-
     do {
-      let workoutSession = try HKWorkoutSession(healthStore: store, configuration: config)
+      let workoutSession = try HKWorkoutSession(healthStore: store, configuration: configuration)
       let workoutBuilder = workoutSession.associatedWorkoutBuilder()
       workoutBuilder.dataSource = HKLiveWorkoutDataSource(
         healthStore: store,
-        workoutConfiguration: config
+        workoutConfiguration: configuration
       )
 
       workoutSession.delegate = self
@@ -192,6 +196,19 @@ final class WatchHealthManager: NSObject, ObservableObject {
     case "Fitness": return .traditionalStrengthTraining
     case "Yoga": return .yoga
     default: return .running
+    }
+  }
+
+  static func label(for type: HKWorkoutActivityType) -> String {
+    switch type {
+    case .walking: return "Yürüyüş"
+    case .running: return "Koşu"
+    case .cycling: return "Bisiklet"
+    case .swimming: return "Yüzme"
+    case .hiking: return "Hiking"
+    case .traditionalStrengthTraining: return "Fitness"
+    case .yoga: return "Yoga"
+    default: return "Koşu"
     }
   }
 

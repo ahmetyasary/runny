@@ -36,13 +36,32 @@ final class RunnyLiveSessionManager {
   private var lastActivityType: String = "Aktivite"
   private let healthStore = HKHealthStore()
 
-  func launchWatchApp(activityType: String) {
-    let config = RunnyWorkoutMapper.configuration(for: activityType)
-    healthStore.startWatchApp(with: config) { success, error in
+  /// startWatchApp için workout paylaşım iznini önceden ister.
+  func prepareHealthKitForWatchLaunch() {
+    guard HKHealthStore.isHealthDataAvailable() else { return }
+    let workout = HKObjectType.workoutType()
+    healthStore.requestAuthorization(toShare: [workout], read: [workout]) { _, error in
       if let error {
-        NSLog("Runny startWatchApp error: \(error.localizedDescription)")
-      } else {
-        NSLog("Runny startWatchApp success=\(success)")
+        NSLog("Runny HealthKit prepare error: \(error.localizedDescription)")
+      }
+    }
+  }
+
+  func launchWatchApp(activityType: String) {
+    // startWatchApp için iPhone'da workout paylaşım izni şart.
+    let workout = HKObjectType.workoutType()
+    healthStore.requestAuthorization(toShare: [workout], read: [workout]) { [weak self] _, error in
+      if let error {
+        NSLog("Runny HealthKit auth error: \(error.localizedDescription)")
+      }
+      guard let self else { return }
+      let config = RunnyWorkoutMapper.configuration(for: activityType)
+      self.healthStore.startWatchApp(with: config) { success, err in
+        if let err {
+          NSLog("Runny startWatchApp error: \(err.localizedDescription)")
+        } else {
+          NSLog("Runny startWatchApp success=\(success)")
+        }
       }
     }
   }
