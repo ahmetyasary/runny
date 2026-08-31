@@ -43,14 +43,14 @@ class _AuthPageState extends State<AuthPage> {
                   const SizedBox(height: 28),
                   Text(
                     _isSignUp ? 'Runny’ye katıl' : 'Tekrar hoş geldin',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.ink,
                       fontSize: 30,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
+                  Text(
                     'Hareketini kaydet, rotanı keşfet, topluluğa katıl.',
                     style: TextStyle(color: AppColors.mutedInk, fontSize: 14),
                   ),
@@ -76,14 +76,14 @@ class _AuthPageState extends State<AuthPage> {
                     const SizedBox(height: 12),
                     Text(
                       _error!,
-                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                      style: TextStyle(color: Colors.red, fontSize: 12),
                     ),
                   ],
                   if (_info != null) ...[
                     const SizedBox(height: 12),
                     Text(
                       _info!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.primaryDark,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -233,7 +233,7 @@ class _SocialButton extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           foregroundColor: AppColors.ink,
           padding: const EdgeInsets.symmetric(vertical: 14),
-          side: const BorderSide(color: AppColors.line),
+          side: BorderSide(color: AppColors.line),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         ),
       ),

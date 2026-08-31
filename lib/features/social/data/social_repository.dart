@@ -261,6 +261,36 @@ class SocialRepository {
     ];
   }
 
+  /// Beni takip edenlerin son kayıtları (bildirim listesi).
+  Future<List<({Profile profile, DateTime followedAt})>> fetchRecentFollowers({
+    int limit = 30,
+  }) async {
+    final uid = _uid;
+    if (uid == null) return const [];
+
+    final rows = await client
+        .from('follows')
+        .select('created_at, profiles:follower_id (*)')
+        .eq('following_id', uid)
+        .order('created_at', ascending: false)
+        .limit(limit);
+
+    final result = <({Profile profile, DateTime followedAt})>[];
+    for (final row in rows) {
+      final profileRaw = row['profiles'];
+      if (profileRaw is! Map) continue;
+      final createdRaw = row['created_at'] as String?;
+      final followedAt = createdRaw != null
+          ? DateTime.tryParse(createdRaw)?.toLocal() ?? DateTime.now()
+          : DateTime.now();
+      result.add((
+        profile: Profile.fromJson(Map<String, dynamic>.from(profileRaw)),
+        followedAt: followedAt,
+      ));
+    }
+    return result;
+  }
+
   Future<List<Profile>> fetchFollowing(String profileId) async {
     final rows = await client
         .from('follows')

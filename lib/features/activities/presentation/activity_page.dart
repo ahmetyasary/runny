@@ -27,7 +27,7 @@ class ActivityPage extends StatelessWidget {
                 sliver: SliverToBoxAdapter(
                   child: Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -79,7 +79,7 @@ class ActivityPage extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
+                      Text(
                         'Son aktiviteler',
                         style: TextStyle(
                           color: AppColors.ink,
@@ -101,7 +101,7 @@ class ActivityPage extends StatelessWidget {
                   child: Center(child: CircularProgressIndicator()),
                 )
               else if (activities.isEmpty)
-                const SliverFillRemaining(
+                SliverFillRemaining(
                   hasScrollBody: false,
                   child: Center(
                     child: Padding(
@@ -150,7 +150,7 @@ class _Stat extends StatelessWidget {
         margin: const EdgeInsets.only(right: 8),
         padding: const EdgeInsets.symmetric(vertical: 17, horizontal: 8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.card,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: AppColors.line),
         ),
@@ -158,7 +158,7 @@ class _Stat extends StatelessWidget {
           children: [
             Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.primaryDark,
                 fontSize: 19,
                 fontWeight: FontWeight.w800,
@@ -168,7 +168,7 @@ class _Stat extends StatelessWidget {
             Text(
               label,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.mutedInk, fontSize: 10),
+              style: TextStyle(color: AppColors.mutedInk, fontSize: 10),
             ),
           ],
         ),
@@ -214,7 +214,7 @@ class _ActivityListItem extends StatelessWidget {
                       const Spacer(),
                       Text(
                         activity.when,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.mutedInk,
                           fontSize: 11,
                         ),
@@ -224,7 +224,7 @@ class _ActivityListItem extends StatelessWidget {
                   const SizedBox(height: 7),
                   Text(
                     activity.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.ink,
                       fontWeight: FontWeight.w800,
                       fontSize: 15,
@@ -235,7 +235,7 @@ class _ActivityListItem extends StatelessWidget {
                     children: [
                       Text(
                         '${activity.distance.toStringAsFixed(2)} km',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.ink,
                           fontWeight: FontWeight.w800,
                           fontSize: 13,
@@ -244,7 +244,7 @@ class _ActivityListItem extends StatelessWidget {
                       const SizedBox(width: 12),
                       Text(
                         activity.duration,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.mutedInk,
                           fontSize: 12,
                         ),
@@ -253,7 +253,7 @@ class _ActivityListItem extends StatelessWidget {
                         const SizedBox(width: 12),
                         Text(
                           '${activity.calories} kcal',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.mutedInk,
                             fontSize: 12,
                           ),
@@ -263,7 +263,7 @@ class _ActivityListItem extends StatelessWidget {
                         const SizedBox(width: 12),
                         Text(
                           '♥ ${activity.avgHeartRate}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.mutedInk,
                             fontSize: 12,
                           ),
@@ -273,7 +273,7 @@ class _ActivityListItem extends StatelessWidget {
                         const SizedBox(width: 12),
                         Text(
                           '↑ ${activity.elevationGainMeters.round()} m',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.mutedInk,
                             fontSize: 12,
                           ),

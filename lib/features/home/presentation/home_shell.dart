@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../core/l10n/app_localizations.dart';
 import '../../../core/models/profile_options.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../activities/presentation/activity_history_controller.dart';
@@ -8,8 +11,11 @@ import '../../activities/presentation/activity_session_controller.dart';
 import '../../activities/presentation/floating_activity_bubble.dart';
 import '../../discover/presentation/discover_page.dart';
 import '../../feed/presentation/feed_page.dart';
+import '../../feed/presentation/notifications_page.dart';
 import '../../groups/presentation/groups_page.dart';
 import '../../profile/presentation/profile_page.dart';
+import '../../social/data/follow_realtime_controller.dart';
+import '../../social/presentation/public_profile_page.dart';
 import '../../watch/presentation/watch_session_sync.dart';
 
 class HomeShell extends StatefulWidget {
@@ -28,6 +34,7 @@ class _HomeShellState extends State<HomeShell> {
   final _groupsKey = GlobalKey<GroupsPageState>();
   final _profileKey = GlobalKey<ProfilePageState>();
   late final WatchSessionSync _watchSync;
+  final _followRealtime = FollowRealtimeController();
 
   @override
   void initState() {
@@ -36,11 +43,18 @@ class _HomeShellState extends State<HomeShell> {
     _watchSync = WatchSessionSync(_session);
     _watchSync.start();
     _history.refresh();
+    _followRealtime.onFollowNotification = (item) {
+      _feedKey.currentState?.ingestFollowNotification(item);
+    };
+    _followRealtime.addListener(_onFollowRealtimeChanged);
+    unawaited(_followRealtime.start());
   }
 
   @override
   void dispose() {
     _session.removeListener(_onSessionChanged);
+    _followRealtime.removeListener(_onFollowRealtimeChanged);
+    unawaited(_followRealtime.stop());
     _watchSync.dispose();
     _session.dispose();
     _history.dispose();
@@ -49,6 +63,24 @@ class _HomeShellState extends State<HomeShell> {
 
   void _onSessionChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _onFollowRealtimeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openFollowToast() async {
+    final item = _followRealtime.toast;
+    if (item == null) return;
+    _followRealtime.dismissToast();
+    await Future<void>.delayed(AnimatedFollowToast.animDuration);
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfilePage(profileId: item.userId),
+      ),
+    );
   }
 
   void _refreshTab(int index) {
@@ -117,6 +149,16 @@ class _HomeShellState extends State<HomeShell> {
               session: _session,
               onCompleted: _completeActivity,
             ),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: AnimatedFollowToast(
+                item: _followRealtime.toast,
+                onOpen: () => unawaited(_openFollowToast()),
+                onDismiss: _followRealtime.dismissToast,
+              ),
+            ),
           ],
         ),
         floatingActionButton: showFab
@@ -156,26 +198,26 @@ class _HomeShellState extends State<HomeShell> {
             setState(() => _selectedIndex = index);
             _refreshTab(index);
           },
-          destinations: const [
+          destinations: [
             NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home_rounded),
-              label: 'Akış',
+              icon: const Icon(Icons.home_outlined),
+              selectedIcon: const Icon(Icons.home_rounded),
+              label: AppLocalizations.of(context).tabFeed,
             ),
             NavigationDestination(
-              icon: Icon(Icons.explore_outlined),
-              selectedIcon: Icon(Icons.explore_rounded),
-              label: 'Keşfet',
+              icon: const Icon(Icons.explore_outlined),
+              selectedIcon: const Icon(Icons.explore_rounded),
+              label: AppLocalizations.of(context).tabDiscover,
             ),
             NavigationDestination(
-              icon: Icon(Icons.groups_outlined),
-              selectedIcon: Icon(Icons.groups_rounded),
-              label: 'Gruplar',
+              icon: const Icon(Icons.groups_outlined),
+              selectedIcon: const Icon(Icons.groups_rounded),
+              label: AppLocalizations.of(context).tabGroups,
             ),
             NavigationDestination(
-              icon: Icon(Icons.person_outline_rounded),
-              selectedIcon: Icon(Icons.person_rounded),
-              label: 'Profil',
+              icon: const Icon(Icons.person_outline_rounded),
+              selectedIcon: const Icon(Icons.person_rounded),
+              label: AppLocalizations.of(context).tabProfile,
             ),
           ],
         ),
@@ -197,7 +239,7 @@ class _HomeShellState extends State<HomeShell> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.card,
       builder: (context) => SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(22, 4, 22, 22),
@@ -205,8 +247,8 @@ class _HomeShellState extends State<HomeShell> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Aktivite başlat',
+              Text(
+                AppLocalizations.of(context).startActivity,
                 style: TextStyle(
                   color: AppColors.ink,
                   fontSize: 21,
@@ -214,8 +256,8 @@ class _HomeShellState extends State<HomeShell> {
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Hareketini kaydet, rotanı arkadaşlarınla paylaş.',
+              Text(
+                AppLocalizations.of(context).startActivityHint,
                 style: TextStyle(color: AppColors.mutedInk, fontSize: 13),
               ),
               const SizedBox(height: 18),
@@ -298,7 +340,7 @@ class _ActivityOption extends StatelessWidget {
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.ink,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,

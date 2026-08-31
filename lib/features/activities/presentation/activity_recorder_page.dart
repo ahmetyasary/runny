@@ -178,7 +178,7 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
                     child: Text(
                       _mapError!,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                      style: TextStyle(color: Colors.white, fontSize: 12),
                     ),
                   ),
                 ),
@@ -199,7 +199,7 @@ class _ActivityRecorderPageState extends State<ActivityRecorderPage> {
               child: FloatingActionButton.small(
                 heroTag: 'locate',
                 onPressed: _centerOnCurrentLocation,
-                backgroundColor: Colors.white,
+                backgroundColor: AppColors.card,
                 foregroundColor: AppColors.ink,
                 child: _isLoadingLocation
                     ? const SizedBox.square(
@@ -288,7 +288,7 @@ class _LivePill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .94),
+        color: AppColors.card.withValues(alpha: .94),
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 12)],
       ),
@@ -306,7 +306,7 @@ class _LivePill extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             isRecording ? 'Kayıt devam ediyor' : 'Kayıt başlamadı',
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.ink,
               fontWeight: FontWeight.w700,
               fontSize: 12,
@@ -323,7 +323,7 @@ class _LivePill extends StatelessWidget {
           const SizedBox(width: 10),
           Text(
             elapsed,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.primaryDark,
               fontWeight: FontWeight.w800,
               fontSize: 13,
@@ -372,10 +372,10 @@ class _RecorderPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 22),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 20)],
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 20)],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -429,7 +429,7 @@ class _RecorderPanel extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.ink,
                       padding: const EdgeInsets.symmetric(vertical: 15),
-                      side: const BorderSide(color: AppColors.line),
+                      side: BorderSide(color: AppColors.line),
                     ),
                   ),
                 ),
@@ -480,11 +480,11 @@ class _RecorderMetric extends StatelessWidget {
     return Expanded(
       child: Column(
         children: [
-          Text(label, style: const TextStyle(color: AppColors.mutedInk, fontSize: 11)),
+          Text(label, style: TextStyle(color: AppColors.mutedInk, fontSize: 11)),
           const SizedBox(height: 4),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.ink,
               fontSize: 13,
               fontWeight: FontWeight.w800,

@@ -55,7 +55,7 @@ class ActivityDetailPage extends StatelessWidget {
                           color: activity.type.color,
                         ),
                         const SizedBox(height: 10),
-                        const Text(
+                        Text(
                           'Bu aktivite için kayıtlı rota yok',
                           style: TextStyle(color: AppColors.mutedInk),
                         ),
@@ -86,7 +86,7 @@ class ActivityDetailPage extends StatelessWidget {
                         children: [
                           Text(
                             activity.type.label,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColors.ink,
                               fontWeight: FontWeight.w800,
                               fontSize: 16,
@@ -95,7 +95,7 @@ class ActivityDetailPage extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             _dateLabel,
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: AppColors.mutedInk,
                               fontSize: 12,
                             ),
@@ -110,7 +110,7 @@ class ActivityDetailPage extends StatelessWidget {
                   const SizedBox(height: 14),
                   Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.place_outlined,
                         size: 16,
                         color: AppColors.mutedInk,
@@ -119,7 +119,7 @@ class ActivityDetailPage extends StatelessWidget {
                       Expanded(
                         child: Text(
                           activity.location,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.mutedInk,
                             fontSize: 13,
                           ),
@@ -129,7 +129,7 @@ class ActivityDetailPage extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 20),
-                const Text(
+                Text(
                   'Özet',
                   style: TextStyle(
                     color: AppColors.ink,
@@ -239,7 +239,7 @@ class _StatsGrid extends StatelessWidget {
                   const SizedBox(height: 10),
                   Text(
                     item.value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.ink,
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -248,7 +248,7 @@ class _StatsGrid extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     item.label,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.mutedInk,
                       fontSize: 12,
                     ),

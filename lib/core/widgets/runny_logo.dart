@@ -19,11 +19,22 @@ class RunnyLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.asset(
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final image = Image.asset(
       showWordmark ? AppAssets.logo : AppAssets.icon,
       height: height,
       fit: BoxFit.contain,
       filterQuality: FilterQuality.high,
+    );
+
+    // Logo koyu yeşil; dark modda okunabilir açık yeşile boya.
+    if (!dark) return image;
+    return ColorFiltered(
+      colorFilter: const ColorFilter.mode(
+        Color(0xFF6BE08A),
+        BlendMode.srcIn,
+      ),
+      child: image,
     );
   }
 }
@@ -32,27 +43,38 @@ class RunnyMark extends StatelessWidget {
   const RunnyMark({
     super.key,
     this.size = 48,
-    this.backgroundColor = AppColors.softGreen,
+    this.backgroundColor,
   });
 
   final double size;
-  final Color backgroundColor;
+  final Color? backgroundColor;
 
   @override
   Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final icon = Image.asset(
+      AppAssets.icon,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+    );
+
     return Container(
       width: size,
       height: size,
       padding: EdgeInsets.all(size * 0.12),
       decoration: BoxDecoration(
-        color: backgroundColor,
+        color: backgroundColor ?? AppColors.softGreen,
         borderRadius: BorderRadius.circular(size * 0.28),
       ),
-      child: Image.asset(
-        AppAssets.icon,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
-      ),
+      child: dark
+          ? ColorFiltered(
+              colorFilter: const ColorFilter.mode(
+                Color(0xFF6BE08A),
+                BlendMode.srcIn,
+              ),
+              child: icon,
+            )
+          : icon,
     );
   }
 }

@@ -290,7 +290,7 @@ class DiscoverPageState extends State<DiscoverPage> {
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          const SliverPadding(
+          SliverPadding(
             padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
             sliver: SliverToBoxAdapter(
               child: Text(
@@ -355,7 +355,7 @@ class DiscoverPageState extends State<DiscoverPage> {
               color: AppColors.lavender,
               borderRadius: BorderRadius.circular(24),
             ),
-            child: const Row(
+            child: Row(
               children: [
                 Icon(Icons.explore_rounded, color: Color(0xFF6D62C5), size: 30),
                 SizedBox(width: 13),
@@ -390,12 +390,12 @@ class DiscoverPageState extends State<DiscoverPage> {
           sliver: SliverToBoxAdapter(
             child: Text(
               _error!,
-              style: const TextStyle(color: Colors.redAccent, fontSize: 13),
+              style: TextStyle(color: Colors.redAccent, fontSize: 13),
             ),
           ),
         ),
       if (_suggested.isNotEmpty) ...[
-        const SliverPadding(
+        SliverPadding(
           padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
           sliver: SliverToBoxAdapter(
             child: Text(
@@ -434,7 +434,7 @@ class DiscoverPageState extends State<DiscoverPage> {
         sliver: SliverToBoxAdapter(
           child: Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Öne çıkanlar',
                   style: TextStyle(
@@ -453,7 +453,7 @@ class DiscoverPageState extends State<DiscoverPage> {
         ),
       ),
       if (_routes.isEmpty)
-        const SliverPadding(
+        SliverPadding(
           padding: EdgeInsets.fromLTRB(20, 8, 20, 40),
           sliver: SliverToBoxAdapter(
             child: Text(
@@ -495,7 +495,7 @@ class DiscoverPageState extends State<DiscoverPage> {
 
     final empty = _people.isEmpty && _matchedRoutes.isEmpty;
     if (empty) {
-      return const [
+      return [
         SliverPadding(
           padding: EdgeInsets.fromLTRB(20, 8, 20, 40),
           sliver: SliverToBoxAdapter(
@@ -510,7 +510,7 @@ class DiscoverPageState extends State<DiscoverPage> {
 
     return [
       if (_people.isNotEmpty) ...[
-        const SliverPadding(
+        SliverPadding(
           padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
           sliver: SliverToBoxAdapter(
             child: Text(
@@ -533,14 +533,14 @@ class DiscoverPageState extends State<DiscoverPage> {
               return ListTile(
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
-                  side: const BorderSide(color: AppColors.line),
+                  side: BorderSide(color: AppColors.line),
                 ),
-                tileColor: Colors.white,
+                tileColor: AppColors.card,
                 leading: CircleAvatar(
                   backgroundColor: AppColors.softGreen,
                   child: Text(
                     person.initials,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.primaryDark,
                       fontWeight: FontWeight.w800,
                       fontSize: 12,
@@ -549,7 +549,7 @@ class DiscoverPageState extends State<DiscoverPage> {
                 ),
                 title: Text(
                   person.name,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  style: TextStyle(fontWeight: FontWeight.w700),
                 ),
                 subtitle: Text(person.handle),
                 trailing: const Icon(Icons.chevron_right_rounded),
@@ -560,7 +560,7 @@ class DiscoverPageState extends State<DiscoverPage> {
         ),
       ],
       if (_matchedRoutes.isNotEmpty) ...[
-        const SliverPadding(
+        SliverPadding(
           padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
           sliver: SliverToBoxAdapter(
             child: Text(
@@ -610,7 +610,7 @@ class _SuggestedPersonChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: AppColors.card,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onOpen,
@@ -633,7 +633,7 @@ class _SuggestedPersonChip extends StatelessWidget {
                 child: profile.avatarUrl == null
                     ? Text(
                         profile.initials,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.primaryDark,
                           fontWeight: FontWeight.w800,
                           fontSize: 12,
@@ -647,7 +647,7 @@ class _SuggestedPersonChip extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.ink,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -658,7 +658,7 @@ class _SuggestedPersonChip extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.mutedInk, fontSize: 10),
+                style: TextStyle(color: AppColors.mutedInk, fontSize: 10),
               ),
               const Spacer(),
               SizedBox(
@@ -672,7 +672,7 @@ class _SuggestedPersonChip extends StatelessWidget {
                         : AppColors.primaryDark,
                     padding: EdgeInsets.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    textStyle: const TextStyle(
+                    textStyle: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
@@ -730,7 +730,7 @@ class _DiscoverActivityCard extends StatelessWidget {
                       children: [
                         Text(
                           activity.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.ink,
                             fontWeight: FontWeight.w800,
                             fontSize: 15,
@@ -739,7 +739,7 @@ class _DiscoverActivityCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           '${activity.type.label} · ${activity.when}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.mutedInk,
                             fontSize: 12,
                           ),
@@ -749,7 +749,7 @@ class _DiscoverActivityCard extends StatelessWidget {
                           activity.location,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.mutedInk,
                             fontSize: 12,
                           ),
@@ -765,7 +765,7 @@ class _DiscoverActivityCard extends StatelessWidget {
                             const SizedBox(width: 4),
                             Text(
                               '${activity.distance.toStringAsFixed(2)} km',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: AppColors.ink,
                                 fontWeight: FontWeight.w700,
                                 fontSize: 12,
@@ -777,7 +777,7 @@ class _DiscoverActivityCard extends StatelessWidget {
                                 activity.userHandle,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppColors.mutedInk,
                                   fontSize: 12,
                                 ),
@@ -795,7 +795,7 @@ class _DiscoverActivityCard extends StatelessWidget {
                 children: [
                   Text(
                     activity.duration,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.ink,
                       fontWeight: FontWeight.w700,
                       fontSize: 12,
@@ -845,7 +845,7 @@ class _DiscoverActivityCard extends StatelessWidget {
                       ),
                       child: Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.chat_bubble_outline_rounded,
                             size: 17,
                             color: AppColors.mutedInk,
@@ -853,7 +853,7 @@ class _DiscoverActivityCard extends StatelessWidget {
                           const SizedBox(width: 4),
                           Text(
                             '${activity.comments}',
-                            style: const TextStyle(color: AppColors.mutedInk),
+                            style: TextStyle(color: AppColors.mutedInk),
                           ),
                         ],
                       ),

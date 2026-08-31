@@ -81,7 +81,7 @@ class _ProfileActivitiesPageState extends State<ProfileActivitiesPage> {
                     children: [
                       Text(
                         _error!,
-                        style: const TextStyle(color: AppColors.mutedInk),
+                        style: TextStyle(color: AppColors.mutedInk),
                       ),
                       const SizedBox(height: 12),
                       FilledButton(
@@ -92,7 +92,7 @@ class _ProfileActivitiesPageState extends State<ProfileActivitiesPage> {
                   ),
                 )
               : _activities.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
                         'Henüz aktivite yok.',
                         style: TextStyle(color: AppColors.mutedInk),
@@ -136,14 +136,14 @@ class _ProfileActivitiesPageState extends State<ProfileActivitiesPage> {
                                         Expanded(
                                           child: Text(
                                             activity.title,
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontWeight: FontWeight.w800,
                                             ),
                                           ),
                                         ),
                                         Text(
                                           activity.when,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             color: AppColors.mutedInk,
                                             fontSize: 11,
                                           ),
@@ -160,7 +160,7 @@ class _ProfileActivitiesPageState extends State<ProfileActivitiesPage> {
                                     const SizedBox(height: 10),
                                     Text(
                                       '${activity.distance.toStringAsFixed(2)} km · ${activity.duration}',
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         color: AppColors.mutedInk,
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,

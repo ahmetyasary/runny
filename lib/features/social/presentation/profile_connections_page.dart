@@ -87,7 +87,7 @@ class _ProfileConnectionsPageState extends State<ProfileConnectionsPage> {
                       children: [
                         Text(
                           _error!,
-                          style: const TextStyle(color: AppColors.mutedInk),
+                          style: TextStyle(color: AppColors.mutedInk),
                         ),
                         const SizedBox(height: 12),
                         FilledButton(
@@ -104,7 +104,7 @@ class _ProfileConnectionsPageState extends State<ProfileConnectionsPage> {
                         widget.mode == ProfileConnectionMode.followers
                             ? 'Henüz takipçi yok.'
                             : 'Henüz takip edilen yok.',
-                        style: const TextStyle(color: AppColors.mutedInk),
+                        style: TextStyle(color: AppColors.mutedInk),
                       ),
                     )
                   : RefreshIndicator(
@@ -119,9 +119,9 @@ class _ProfileConnectionsPageState extends State<ProfileConnectionsPage> {
                           return ListTile(
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
-                              side: const BorderSide(color: AppColors.line),
+                              side: BorderSide(color: AppColors.line),
                             ),
-                            tileColor: Colors.white,
+                            tileColor: AppColors.card,
                             leading: CircleAvatar(
                               backgroundColor: AppColors.softGreen,
                               backgroundImage: person.avatarUrl != null
@@ -130,7 +130,7 @@ class _ProfileConnectionsPageState extends State<ProfileConnectionsPage> {
                               child: person.avatarUrl == null
                                   ? Text(
                                       person.initials,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         color: AppColors.primaryDark,
                                         fontWeight: FontWeight.w800,
                                         fontSize: 12,
@@ -140,7 +140,7 @@ class _ProfileConnectionsPageState extends State<ProfileConnectionsPage> {
                             ),
                             title: Text(
                               person.name,
-                              style: const TextStyle(fontWeight: FontWeight.w700),
+                              style: TextStyle(fontWeight: FontWeight.w700),
                             ),
                             subtitle: Text(person.handle),
                             trailing: const Icon(Icons.chevron_right_rounded),

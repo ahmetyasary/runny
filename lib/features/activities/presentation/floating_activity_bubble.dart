@@ -88,7 +88,7 @@ class _FloatingActivityBubbleState extends State<FloatingActivityBubble> {
                           session.activityType ?? 'Aktivite',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w800,
                             fontSize: 13,
@@ -105,7 +105,7 @@ class _FloatingActivityBubbleState extends State<FloatingActivityBubble> {
                   const SizedBox(height: 10),
                   Text(
                     session.formattedElapsed,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
@@ -115,7 +115,7 @@ class _FloatingActivityBubbleState extends State<FloatingActivityBubble> {
                   const SizedBox(height: 2),
                   Text(
                     session.formattedDistance,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white70,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -125,7 +125,7 @@ class _FloatingActivityBubbleState extends State<FloatingActivityBubble> {
                     const SizedBox(height: 2),
                     Text(
                       '♥ ${session.formattedHeartRate} bpm · ↑ ${session.formattedElevation}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.white70,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,

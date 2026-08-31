@@ -38,6 +38,7 @@ class FeedPageState extends State<FeedPage> {
   int _pendingNewCount = 0;
   Set<String> _followingIds = {};
   final Set<String> _seenActivityIds = {};
+  final Set<String> _seenFollowIds = {};
   final List<FeedNotificationItem> _notifications = [];
   RealtimeChannel? _feedChannel;
 
@@ -74,6 +75,20 @@ class FeedPageState extends State<FeedPage> {
     } catch (_) {}
   }
 
+  /// Realtime / dış kaynaktan gelen takip bildirimini listeye ekler.
+  void ingestFollowNotification(FeedNotificationItem item) {
+    _seenFollowIds.add(item.id);
+    if (!mounted) return;
+    setState(() {
+      final index = _notifications.indexWhere((n) => n.id == item.id);
+      if (index >= 0) {
+        _notifications[index] = item;
+      } else {
+        _notifications.insert(0, item);
+      }
+    });
+  }
+
   Future<void> _setupRealtime() async {
     final client = SupabaseService.client;
     final uid = client?.auth.currentUser?.id;
@@ -91,6 +106,7 @@ class FeedPageState extends State<FeedPage> {
       table: 'activities',
       callback: _onActivityInserted,
     );
+    // Takip realtime HomeShell FollowRealtimeController'da — çift dinleme yok.
     channel.subscribe();
     _feedChannel = channel;
   }
@@ -124,6 +140,8 @@ class FeedPageState extends State<FeedPage> {
       _notifications.insert(
         0,
         FeedNotificationItem(
+          id: 'activity_$activityId',
+          kind: FeedNotificationKind.activity,
           activityId: activityId,
           userId: userId,
           userName: 'Takip ettiğin biri',
@@ -136,24 +154,31 @@ class FeedPageState extends State<FeedPage> {
         ),
       );
     });
-    unawaited(_enrichNotification(activityId, userId));
+    unawaited(_enrichActivityNotification(activityId, userId));
   }
 
-  Future<void> _enrichNotification(String activityId, String userId) async {
+  Future<void> _enrichActivityNotification(
+    String activityId,
+    String userId,
+  ) async {
     final client = SupabaseService.client;
     if (client == null) return;
     try {
       final profile = await SocialRepository(client).fetchProfileById(userId);
       if (profile == null || !mounted) return;
       setState(() {
-        final index =
-            _notifications.indexWhere((n) => n.activityId == activityId);
+        final index = _notifications.indexWhere(
+          (n) => n.id == 'activity_$activityId',
+        );
         if (index < 0) return;
         final prev = _notifications[index];
         _notifications[index] = FeedNotificationItem(
+          id: prev.id,
+          kind: FeedNotificationKind.activity,
           activityId: prev.activityId,
           userId: prev.userId,
           userName: profile.name,
+          userHandle: profile.handle,
           avatarUrl: profile.avatarUrl,
           activityType: prev.activityType,
           title: prev.title,
@@ -165,50 +190,69 @@ class FeedPageState extends State<FeedPage> {
     } catch (_) {}
   }
 
-  void _syncNotificationsFromFeed(List<Activity> feed) {
-    final existingIds = _notifications.map((n) => n.activityId).toSet();
-    final unreadIds = _notifications
-        .where((n) => !n.isRead)
-        .map((n) => n.activityId)
-        .toSet();
+  void _syncNotificationsFromFeed(
+    List<Activity> feed, {
+    List<({Profile profile, DateTime followedAt})> followers = const [],
+  }) {
+    final unreadIds =
+        _notifications.where((n) => !n.isRead).map((n) => n.id).toSet();
 
     final merged = <FeedNotificationItem>[
-      // Önce okunmamış (realtime) bildirimleri koru.
       ..._notifications.where((n) => !n.isRead),
     ];
-    final mergedIds = merged.map((n) => n.activityId).toSet();
+    final mergedIds = merged.map((n) => n.id).toSet();
+
+    for (final entry in followers) {
+      final id = 'follow_${entry.profile.id}';
+      _seenFollowIds.add(id);
+      if (mergedIds.contains(id)) continue;
+      merged.add(
+        FeedNotificationItem(
+          id: id,
+          kind: FeedNotificationKind.follow,
+          userId: entry.profile.id,
+          userName: entry.profile.name,
+          userHandle: entry.profile.handle,
+          avatarUrl: entry.profile.avatarUrl,
+          createdAt: entry.followedAt,
+          isRead: !unreadIds.contains(id),
+        ),
+      );
+      mergedIds.add(id);
+    }
 
     for (final activity in feed) {
       final userId = activity.userId;
       if (userId == null) continue;
-      if (mergedIds.contains(activity.id)) continue;
+      final id = 'activity_${activity.id}';
+      if (mergedIds.contains(id)) continue;
       merged.add(
         FeedNotificationItem(
+          id: id,
+          kind: FeedNotificationKind.activity,
           activityId: activity.id,
           userId: userId,
           userName: activity.userName,
+          userHandle: activity.userHandle,
           activityType: activity.type.label,
           title: activity.title,
           createdAt: activity.startedAt ?? DateTime.now(),
           distanceKm: activity.distance,
-          isRead: !unreadIds.contains(activity.id),
+          isRead: !unreadIds.contains(id),
         ),
       );
-      mergedIds.add(activity.id);
+      mergedIds.add(id);
     }
 
-    // Eski okunmuşları da tut (feed'de yoksa silinmesin diye sınırlı).
     for (final n in _notifications) {
-      if (mergedIds.contains(n.activityId)) continue;
-      if (existingIds.contains(n.activityId)) {
-        merged.add(n);
-        mergedIds.add(n.activityId);
-      }
+      if (mergedIds.contains(n.id)) continue;
+      merged.add(n);
+      mergedIds.add(n.id);
     }
 
     merged.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    if (merged.length > 50) {
-      merged.removeRange(50, merged.length);
+    if (merged.length > 60) {
+      merged.removeRange(60, merged.length);
     }
     _notifications
       ..clear()
@@ -227,6 +271,7 @@ class FeedPageState extends State<FeedPage> {
         _followingIds = {};
         _pendingNewCount = 0;
         _seenActivityIds.clear();
+        _seenFollowIds.clear();
         _notifications.clear();
         _loading = false;
       });
@@ -245,16 +290,20 @@ class FeedPageState extends State<FeedPage> {
       Map<String, ({double km, int count})> weekly = const {};
       List<Activity> feed = const [];
       var following = <String>{};
+      var followers = <({Profile profile, DateTime followedAt})>[];
 
       try {
         final results = await Future.wait([
           profileRepo.fetchCurrent(),
           activityRepo.fetchWeeklySportProgress(),
           social.fetchFollowingIds(),
+          social.fetchRecentFollowers(),
         ]);
         profile = results[0] as Profile?;
         weekly = results[1] as Map<String, ({double km, int count})>;
         following = results[2] as Set<String>;
+        followers =
+            results[3] as List<({Profile profile, DateTime followedAt})>;
       } catch (_) {}
 
       try {
@@ -271,7 +320,7 @@ class FeedPageState extends State<FeedPage> {
         _seenActivityIds
           ..clear()
           ..addAll(feed.map((a) => a.id));
-        _syncNotificationsFromFeed(feed);
+        _syncNotificationsFromFeed(feed, followers: followers);
         _loading = false;
       });
       await _setupRealtime();
@@ -346,8 +395,7 @@ class FeedPageState extends State<FeedPage> {
               _pendingNewCount = 0;
             });
           },
-          onOpenActivity: (_) {
-            // Profil sayfasına gider; akış banner'ı da temizlensin.
+          onOpenItem: (_) {
             if (!mounted) return;
             setState(() => _pendingNewCount = 0);
           },
@@ -381,14 +429,14 @@ class FeedPageState extends State<FeedPage> {
                         const SizedBox(height: 14),
                         Text(
                           '$greeting, $firstName 👋',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.ink,
                             fontSize: 23,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
                         const SizedBox(height: 5),
-                        const Text(
+                        Text(
                           'Bugün hareket etmeye hazır mısın?',
                           style: TextStyle(color: AppColors.mutedInk, fontSize: 14),
                         ),
@@ -418,7 +466,7 @@ class FeedPageState extends State<FeedPage> {
                         child: _profile?.avatarUrl == null
                             ? Text(
                                 _profile?.initials ?? 'RN',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppColors.primaryDark,
                                   fontWeight: FontWeight.w800,
                                   fontSize: 12,
@@ -457,7 +505,7 @@ class FeedPageState extends State<FeedPage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
+                  Text(
                     'Arkadaşlarından',
                     style: TextStyle(
                       color: AppColors.ink,
@@ -479,7 +527,7 @@ class FeedPageState extends State<FeedPage> {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (_activities.isEmpty)
-            const SoftWrapFillRemaining(
+            SoftWrapFillRemaining(
               child: Center(
                 child: Padding(
                   padding: EdgeInsets.all(32),
@@ -555,7 +603,7 @@ class _NewActivitiesBanner extends StatelessWidget {
               Expanded(
                 child: Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
@@ -709,7 +757,7 @@ class _WeeklyProgressCard extends StatelessWidget {
                       lines.length <= 1
                           ? headline
                           : '%$percent tamamlandı',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.white,
                         fontSize: 24,
                         fontWeight: FontWeight.w800,
@@ -722,7 +770,7 @@ class _WeeklyProgressCard extends StatelessWidget {
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Text(
                             '${line.label}: ${line.headline}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: Colors.white70,
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
@@ -763,11 +811,11 @@ class _WeeklyProgressCard extends StatelessWidget {
             children: [
               Text(
                 'Bu hafta $totalActivities aktivite',
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                style: TextStyle(color: Colors.white70, fontSize: 12),
               ),
               Text(
                 hasGoal ? '%$percent tamamlandı' : 'Profil’den hedef ekle',
-                style: const TextStyle(
+                style: TextStyle(
                   color: Colors.white,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -849,7 +897,7 @@ class _ActivityCard extends StatelessWidget {
                       children: [
                         Text(
                           activity.userName,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.ink,
                             fontWeight: FontWeight.w700,
                             fontSize: 14,
@@ -858,7 +906,7 @@ class _ActivityCard extends StatelessWidget {
                         const SizedBox(height: 3),
                         Text(
                           '${activity.type.label} · ${activity.when}',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.mutedInk,
                             fontSize: 12,
                           ),
@@ -873,7 +921,7 @@ class _ActivityCard extends StatelessWidget {
             const SizedBox(height: 14),
             Text(
               activity.title,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.ink,
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
@@ -882,11 +930,11 @@ class _ActivityCard extends StatelessWidget {
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(Icons.place_outlined, size: 15, color: AppColors.mutedInk),
+                Icon(Icons.place_outlined, size: 15, color: AppColors.mutedInk),
                 const SizedBox(width: 4),
                 Text(
                   activity.location,
-                  style: const TextStyle(color: AppColors.mutedInk, fontSize: 12),
+                  style: TextStyle(color: AppColors.mutedInk, fontSize: 12),
                 ),
               ],
             ),
@@ -943,7 +991,7 @@ class _ActivityCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                     child: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.chat_bubble_outline_rounded,
                           size: 18,
                           color: AppColors.mutedInk,
@@ -951,7 +999,7 @@ class _ActivityCard extends StatelessWidget {
                         const SizedBox(width: 4),
                         Text(
                           '${activity.comments}',
-                          style: const TextStyle(color: AppColors.mutedInk),
+                          style: TextStyle(color: AppColors.mutedInk),
                         ),
                       ],
                     ),
@@ -979,11 +1027,11 @@ class _Metric extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: AppColors.mutedInk, fontSize: 11)),
+          Text(label, style: TextStyle(color: AppColors.mutedInk, fontSize: 11)),
           const SizedBox(height: 3),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.ink,
               fontWeight: FontWeight.w800,
               fontSize: 14,
@@ -1009,7 +1057,7 @@ class _RoundIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: AppColors.card,
       shape: const CircleBorder(),
       child: InkWell(
         onTap: onPressed,
@@ -1036,7 +1084,7 @@ class _RoundIconButton extends StatelessWidget {
                   alignment: Alignment.center,
                   child: Text(
                     badgeCount > 9 ? '9+' : '$badgeCount',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
                       fontSize: 9,
                       fontWeight: FontWeight.w800,

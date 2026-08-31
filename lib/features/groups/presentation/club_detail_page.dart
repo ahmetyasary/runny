@@ -84,7 +84,7 @@ class _ClubDetailPageState extends State<ClubDetailPage> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.card,
       builder: (context) => _CreateEventSheet(defaultSport: club.sport),
     );
     if (result == null || !mounted) return;
@@ -169,7 +169,7 @@ class _ClubDetailPageState extends State<ClubDetailPage> {
                         padding: const EdgeInsets.all(16),
                         child: Text(
                           club.name,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
                             fontSize: 22,
                             fontWeight: FontWeight.w800,
@@ -184,7 +184,7 @@ class _ClubDetailPageState extends State<ClubDetailPage> {
                           '${club.memberCount} üye',
                           club.isPublic ? 'Herkese açık' : 'Özel',
                         ].join(' · '),
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.mutedInk,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -194,7 +194,7 @@ class _ClubDetailPageState extends State<ClubDetailPage> {
                         const SizedBox(height: 10),
                         Text(
                           club.description,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.ink,
                             height: 1.45,
                             fontSize: 14,
@@ -237,7 +237,7 @@ class _ClubDetailPageState extends State<ClubDetailPage> {
                         ],
                       ),
                       const SizedBox(height: 24),
-                      const Text(
+                      Text(
                         'Etkinlikler',
                         style: TextStyle(
                           color: AppColors.ink,
@@ -247,7 +247,7 @@ class _ClubDetailPageState extends State<ClubDetailPage> {
                       ),
                       const SizedBox(height: 10),
                       if (_events.isEmpty)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.symmetric(vertical: 28),
                           child: Text(
                             'Henüz etkinlik yok. İlk etkinliği sen oluştur.',
@@ -288,7 +288,7 @@ class _DetailEventTile extends StatelessWidget {
         '${at.day}.${at.month}.${at.year} · ${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
 
     return Material(
-      color: Colors.white,
+      color: AppColors.card,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -300,7 +300,7 @@ class _DetailEventTile extends StatelessWidget {
                 children: [
                   Text(
                     event.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.ink,
                       fontWeight: FontWeight.w800,
                       fontSize: 15,
@@ -314,7 +314,7 @@ class _DetailEventTile extends StatelessWidget {
                       if (event.locationName.isNotEmpty) event.locationName,
                       '${event.participantCount} kişi',
                     ].join(' · '),
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.mutedInk,
                       fontSize: 12,
                     ),
@@ -424,7 +424,7 @@ class _CreateEventSheetState extends State<_CreateEventSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'Yeni etkinlik',
               style: TextStyle(
                 fontSize: 21,

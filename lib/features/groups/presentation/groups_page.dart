@@ -122,7 +122,7 @@ class GroupsPageState extends State<GroupsPage>
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.card,
       builder: (context) => const _CreateClubSheet(),
     );
     if (result == null || !mounted) return;
@@ -179,7 +179,7 @@ class GroupsPageState extends State<GroupsPage>
           padding: const EdgeInsets.fromLTRB(20, 18, 12, 0),
           child: Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -216,7 +216,7 @@ class GroupsPageState extends State<GroupsPage>
           labelColor: AppColors.primaryDark,
           unselectedLabelColor: AppColors.mutedInk,
           indicatorColor: AppColors.primaryDark,
-          labelStyle: const TextStyle(fontWeight: FontWeight.w800),
+          labelStyle: TextStyle(fontWeight: FontWeight.w800),
           tabs: const [
             Tab(text: 'Toplu Aktiviteler'),
             Tab(text: 'Kulüpler'),
@@ -227,7 +227,7 @@ class GroupsPageState extends State<GroupsPage>
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
             child: Text(
               _error!,
-              style: const TextStyle(color: Color(0xFFE15B64), fontSize: 13),
+              style: TextStyle(color: Color(0xFFE15B64), fontSize: 13),
             ),
           ),
         Expanded(
@@ -290,14 +290,14 @@ class _EventsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (loading) {
-      return const Center(child: CircularProgressIndicator());
+      return Center(child: CircularProgressIndicator());
     }
     if (events.isEmpty) {
       return RefreshIndicator(
         onRefresh: () => onRefresh(),
         child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
+          physics: AlwaysScrollableScrollPhysics(),
+          children: [
             SizedBox(height: 80),
             Icon(Icons.event_outlined, size: 42, color: AppColors.mutedInk),
             SizedBox(height: 12),
@@ -366,7 +366,7 @@ class _ClubsTab extends StatelessWidget {
             child: InkWell(
               onTap: onCreate,
               borderRadius: BorderRadius.circular(16),
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 child: Row(
                   children: [
@@ -389,7 +389,7 @@ class _ClubsTab extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           if (clubs.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(top: 48),
               child: Text(
                 'Henüz kulüp yok.\nİlk kulübü sen oluştur.',
@@ -424,7 +424,7 @@ class _EventCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: AppColors.card,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onOpenClub,
@@ -447,7 +447,7 @@ class _EventCard extends StatelessWidget {
                     ),
                     child: Text(
                       event.sport,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.primaryDark,
                         fontWeight: FontWeight.w700,
                         fontSize: 12,
@@ -457,7 +457,7 @@ class _EventCard extends StatelessWidget {
                   const Spacer(),
                   Text(
                     _formatWhen(event.startsAt),
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.mutedInk,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -468,7 +468,7 @@ class _EventCard extends StatelessWidget {
               const SizedBox(height: 10),
               Text(
                 event.title,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.ink,
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
@@ -477,7 +477,7 @@ class _EventCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 event.clubName,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.primaryDark,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
@@ -487,7 +487,7 @@ class _EventCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   event.locationName,
-                  style: const TextStyle(color: AppColors.mutedInk, fontSize: 13),
+                  style: TextStyle(color: AppColors.mutedInk, fontSize: 13),
                 ),
               ],
               const SizedBox(height: 12),
@@ -495,7 +495,7 @@ class _EventCard extends StatelessWidget {
                 children: [
                   Text(
                     '${event.participantCount} katılımcı',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.mutedInk,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -547,7 +547,7 @@ class _ClubCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: AppColors.card,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
@@ -561,7 +561,7 @@ class _ClubCard extends StatelessWidget {
                 backgroundColor: AppColors.softGreen,
                 child: Text(
                   club.name.isEmpty ? 'K' : club.name[0].toUpperCase(),
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.primaryDark,
                     fontWeight: FontWeight.w800,
                     fontSize: 18,
@@ -575,7 +575,7 @@ class _ClubCard extends StatelessWidget {
                   children: [
                     Text(
                       club.name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.ink,
                         fontWeight: FontWeight.w800,
                         fontSize: 16,
@@ -588,7 +588,7 @@ class _ClubCard extends StatelessWidget {
                         if (club.city.isNotEmpty) club.city,
                         '${club.memberCount} üye',
                       ].join(' · '),
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.mutedInk,
                         fontSize: 13,
                       ),
@@ -597,10 +597,10 @@ class _ClubCard extends StatelessWidget {
                 ),
               ),
               if (club.isMember)
-                const Icon(Icons.check_circle_rounded,
+                Icon(Icons.check_circle_rounded,
                     color: AppColors.primaryDark, size: 22)
               else
-                const Icon(Icons.chevron_right_rounded,
+                Icon(Icons.chevron_right_rounded,
                     color: AppColors.mutedInk),
             ],
           ),
@@ -655,7 +655,7 @@ class _CreateClubSheetState extends State<_CreateClubSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'Yeni kulüp',
               style: TextStyle(
                 fontSize: 21,

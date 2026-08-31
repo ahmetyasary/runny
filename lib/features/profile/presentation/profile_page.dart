@@ -5,6 +5,8 @@ import '../../../core/models/activity.dart';
 import '../../../core/models/profile.dart';
 import '../../../core/models/profile_options.dart';
 import '../../../core/models/sport_goal.dart';
+import '../../../core/l10n/app_localizations.dart';
+import '../../../core/settings/app_settings_page.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/route_preview.dart';
 import '../../activities/data/activity_repository.dart';
@@ -122,7 +124,7 @@ class ProfilePageState extends State<ProfilePage> {
               Text(
                 _error ?? 'Profil bulunamadı',
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   color: AppColors.mutedInk,
                   height: 1.45,
                 ),
@@ -145,8 +147,8 @@ class ProfilePageState extends State<ProfilePage> {
             sliver: SliverToBoxAdapter(
               child: Row(
                 children: [
-                  const Text(
-                    'Profil',
+                  Text(
+                    AppLocalizations.of(context).profileTitle,
                     style: TextStyle(
                       color: AppColors.ink,
                       fontSize: 24,
@@ -337,6 +339,7 @@ class ProfilePageState extends State<ProfilePage> {
   }
 
   void _showSettings() {
+    final l10n = AppLocalizations.of(context);
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -345,8 +348,20 @@ class ProfilePageState extends State<ProfilePage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.tune_rounded),
+              title: Text(l10n.appSettings),
+              subtitle: Text(l10n.appSettingsSubtitle),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AppSettingsPage()),
+                );
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.edit_outlined),
-              title: const Text('Profili düzenle'),
+              title: Text(l10n.editProfile),
               onTap: () {
                 Navigator.pop(context);
                 if (_profile != null) _openEdit(_profile!);
@@ -354,8 +369,8 @@ class ProfilePageState extends State<ProfilePage> {
             ),
             ListTile(
               leading: const Icon(Icons.watch_rounded),
-              title: const Text('Apple Watch'),
-              subtitle: const Text('Saat bağlantısı ve durum'),
+              title: Text(l10n.appleWatch),
+              subtitle: Text(l10n.appleWatchSubtitle),
               onTap: () {
                 Navigator.pop(context);
                 Navigator.push(
@@ -367,8 +382,8 @@ class ProfilePageState extends State<ProfilePage> {
             if (SupabaseService.client != null)
               ListTile(
                 leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-                title: const Text(
-                  'Çıkış yap',
+                title: Text(
+                  l10n.signOut,
                   style: TextStyle(color: Colors.redAccent),
                 ),
                 onTap: () async {
@@ -446,7 +461,7 @@ class _Header extends StatelessWidget {
             child: profile.avatarUrl == null
                 ? Text(
                     profile.initials,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.primaryDark,
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
@@ -458,7 +473,7 @@ class _Header extends StatelessWidget {
         const SizedBox(height: 14),
         Text(
           profile.name,
-          style: const TextStyle(
+          style: TextStyle(
             color: AppColors.ink,
             fontSize: 24,
             fontWeight: FontWeight.w800,
@@ -467,7 +482,7 @@ class _Header extends StatelessWidget {
         const SizedBox(height: 4),
         Text(
           profile.handle,
-          style: const TextStyle(color: AppColors.mutedInk, fontSize: 13),
+          style: TextStyle(color: AppColors.mutedInk, fontSize: 13),
         ),
         if (meta.isNotEmpty) ...[
           const SizedBox(height: 10),
@@ -483,13 +498,13 @@ class _Header extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.card,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: AppColors.line),
                   ),
                   child: Text(
                     item,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.mutedInk,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -547,7 +562,7 @@ class _Count extends StatelessWidget {
           children: [
             Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.ink,
                 fontSize: 17,
                 fontWeight: FontWeight.w800,
@@ -556,7 +571,7 @@ class _Count extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               label,
-              style: const TextStyle(color: AppColors.mutedInk, fontSize: 11),
+              style: TextStyle(color: AppColors.mutedInk, fontSize: 11),
             ),
           ],
         ),
@@ -583,7 +598,7 @@ class _SectionTitle extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.ink,
               fontSize: 17,
               fontWeight: FontWeight.w800,
@@ -594,7 +609,7 @@ class _SectionTitle extends StatelessWidget {
           onAction == null
               ? Text(
                   actionLabel!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.mutedInk,
                     fontWeight: FontWeight.w700,
                   ),
@@ -676,7 +691,7 @@ class _EmptyGoals extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.line),
       ),
@@ -685,7 +700,7 @@ class _EmptyGoals extends StatelessWidget {
         children: [
           Text(
             text,
-            style: const TextStyle(color: AppColors.mutedInk, fontSize: 13),
+            style: TextStyle(color: AppColors.mutedInk, fontSize: 13),
           ),
           const SizedBox(height: 10),
           TextButton(
@@ -732,7 +747,7 @@ class _GoalCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: AppColors.line),
       ),
@@ -750,7 +765,7 @@ class _GoalCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   sport.label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: AppColors.ink,
                     fontWeight: FontWeight.w800,
                     fontSize: 14,
@@ -770,7 +785,7 @@ class _GoalCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             subtitle,
-            style: const TextStyle(color: AppColors.mutedInk, fontSize: 12),
+            style: TextStyle(color: AppColors.mutedInk, fontSize: 12),
           ),
           if (hasGoal) ...[
             const SizedBox(height: 10),
@@ -803,13 +818,13 @@ class _ChipWrap extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.card,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: AppColors.line),
         ),
         child: Text(
           emptyText,
-          style: const TextStyle(color: AppColors.mutedInk, fontSize: 13),
+          style: TextStyle(color: AppColors.mutedInk, fontSize: 13),
         ),
       );
     }
@@ -873,11 +888,11 @@ class _EmptyHistory extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.line),
       ),
-      child: const Column(
+      child: Column(
         children: [
           Icon(Icons.route_rounded, color: AppColors.mutedInk, size: 32),
           SizedBox(height: 10),
@@ -933,7 +948,7 @@ class _HistoryCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       activity.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.ink,
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
@@ -942,10 +957,10 @@ class _HistoryCard extends StatelessWidget {
                   ),
                   Text(
                     activity.when,
-                    style: const TextStyle(color: AppColors.mutedInk, fontSize: 11),
+                    style: TextStyle(color: AppColors.mutedInk, fontSize: 11),
                   ),
                   const SizedBox(width: 4),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right_rounded,
                     size: 18,
                     color: AppColors.mutedInk,
@@ -978,7 +993,7 @@ class _HistoryCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.speed_rounded,
                       size: 14,
                       color: AppColors.mutedInk,
@@ -986,7 +1001,7 @@ class _HistoryCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       activity.paceLabel!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.mutedInk,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -996,7 +1011,7 @@ class _HistoryCard extends StatelessWidget {
                       const SizedBox(width: 12),
                       Text(
                         '${activity.routePoints.length} nokta',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.mutedInk,
                           fontSize: 12,
                         ),
@@ -1030,7 +1045,7 @@ class _Metric extends StatelessWidget {
             child: Text(
               value,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 color: AppColors.ink,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,

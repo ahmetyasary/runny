@@ -91,7 +91,7 @@ class _WatchStatusPageState extends State<WatchStatusPage> {
                   ),
           ),
           const SizedBox(height: 18),
-          const Text(
+          Text(
             'Nasıl çalışır?',
             style: TextStyle(
               color: AppColors.ink,
@@ -100,7 +100,7 @@ class _WatchStatusPageState extends State<WatchStatusPage> {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Telefon aktivite başlatınca süre ve mesafe saate iletilir. '
             'Saatten de aktivite başlatıp durdurabilirsin.\n\n'
             'Yeşil saat: bağlı · Kırmızı saat: kopuk.',
@@ -127,7 +127,7 @@ class _StatusRow extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(color: AppColors.mutedInk, fontSize: 13),
+              style: TextStyle(color: AppColors.mutedInk, fontSize: 13),
             ),
           ),
           Icon(

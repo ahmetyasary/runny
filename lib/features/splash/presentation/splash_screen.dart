@@ -81,7 +81,7 @@ class _SplashScreenState extends State<SplashScreen>
                 children: [
                   const RunnyLogo(height: 72),
                   const SizedBox(height: 36),
-                  const SizedBox(
+                  SizedBox(
                     width: 28,
                     height: 28,
                     child: CircularProgressIndicator(

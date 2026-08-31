@@ -140,7 +140,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                     child: Text(
                       _error ?? 'Profil bulunamadı',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.mutedInk),
+                      style: TextStyle(color: AppColors.mutedInk),
                     ),
                   ),
                 )
@@ -157,7 +157,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                         child: profile.avatarUrl == null
                             ? Text(
                                 profile.initials,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: AppColors.primaryDark,
                                   fontWeight: FontWeight.w800,
                                   fontSize: 22,
@@ -170,7 +170,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                     Text(
                       profile.name,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: AppColors.ink,
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
@@ -180,7 +180,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                     Text(
                       profile.handle,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.mutedInk),
+                      style: TextStyle(color: AppColors.mutedInk),
                     ),
                     if (profile.profession != null ||
                         profile.location != null) ...[
@@ -192,7 +192,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                           if (profile.location != null) profile.location!,
                         ].join(' · '),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppColors.mutedInk,
                           fontSize: 13,
                         ),
@@ -272,7 +272,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                     ],
                     if (profile.sports.isNotEmpty) ...[
                       const SizedBox(height: 22),
-                      const Text(
+                      Text(
                         'Sporlar',
                         style: TextStyle(
                           color: AppColors.ink,
@@ -295,7 +295,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                       ),
                     ],
                     const SizedBox(height: 22),
-                    const Text(
+                    Text(
                       'Aktiviteler',
                       style: TextStyle(
                         color: AppColors.ink,
@@ -305,7 +305,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                     ),
                     const SizedBox(height: 10),
                     if (_activities.isEmpty)
-                      const Text(
+                      Text(
                         'Henüz herkese açık aktivite yok.',
                         style: TextStyle(color: AppColors.mutedInk),
                       )
@@ -330,7 +330,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                                 children: [
                                   Text(
                                     activity.title,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w800,
                                     ),
                                   ),
@@ -344,7 +344,7 @@ class _PublicProfilePageState extends State<PublicProfilePage> {
                                   const SizedBox(height: 8),
                                   Text(
                                     '${activity.distance.toStringAsFixed(2)} km · ${activity.duration} · ${activity.location}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: AppColors.mutedInk,
                                       fontSize: 12,
                                     ),
@@ -380,14 +380,14 @@ class _Stat extends StatelessWidget {
           children: [
             Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontWeight: FontWeight.w800,
                 color: AppColors.ink,
               ),
             ),
             Text(
               label,
-              style: const TextStyle(color: AppColors.mutedInk, fontSize: 11),
+              style: TextStyle(color: AppColors.mutedInk, fontSize: 11),
             ),
           ],
         ),

@@ -111,36 +111,47 @@ class ProfileRepository {
       throw StateError('Fotoğraf yüklemek için giriş yapılmalı.');
     }
 
-    final ext = contentType.contains('png')
-        ? 'png'
-        : contentType.contains('webp')
-            ? 'webp'
-            : 'jpg';
+    final ext = 'jpg';
     final path = '${user.id}/avatar.$ext';
+
+    if (bytes.lengthInBytes > 2 * 1024 * 1024) {
+      throw StorageException(
+        'Fotoğraf hâlâ çok büyük (${(bytes.lengthInBytes / 1024).round()} KB). Başka bir görsel dene.',
+      );
+    }
 
     try {
       await client.storage.from(_avatarBucket).uploadBinary(
             path,
             bytes,
-            fileOptions: FileOptions(
+            fileOptions: const FileOptions(
               upsert: true,
-              contentType: contentType.startsWith('image/')
-                  ? contentType
-                  : 'image/jpeg',
+              contentType: 'image/jpeg',
               cacheControl: '3600',
             ),
           );
     } on StorageException catch (error) {
       // Bucket yok / RLS → daha anlaşılır mesaj.
       final msg = error.message.toLowerCase();
+      if (msg.contains('maximum') ||
+          msg.contains('too large') ||
+          msg.contains('payload') ||
+          msg.contains('size') ||
+          error.statusCode == '413') {
+        throw StorageException(
+          'Fotoğraf boyutu limiti aşıldı. Daha küçük bir görsel seç.',
+          statusCode: error.statusCode,
+        );
+      }
       if (msg.contains('bucket') ||
           msg.contains('not found') ||
           msg.contains('row-level security') ||
           msg.contains('unauthorized') ||
+          msg.contains('mime') ||
           error.statusCode == '404' ||
           error.statusCode == '403') {
         throw StorageException(
-          'avatars bucket / izin eksik. Supabase’de 009_avatars_storage.sql çalıştır.',
+          'avatars bucket / izin / format sorunu: ${error.message}',
           statusCode: error.statusCode,
         );
       }

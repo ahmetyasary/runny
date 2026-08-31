@@ -23,7 +23,7 @@ class CommentsSheet extends StatefulWidget {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.card,
       builder: (context) => CommentsSheet(
         activityId: activityId,
         onCountChanged: onCountChanged,
@@ -112,7 +112,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
         height: MediaQuery.sizeOf(context).height * 0.62,
         child: Column(
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
               child: Align(
                 alignment: Alignment.centerLeft,
@@ -130,7 +130,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _comments.isEmpty
-                      ? const Center(
+                      ? Center(
                           child: Text(
                             'İlk yorumu sen yaz.',
                             style: TextStyle(color: AppColors.mutedInk),
@@ -153,7 +153,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                                     comment.userName.isNotEmpty
                                         ? comment.userName[0].toUpperCase()
                                         : 'R',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       color: AppColors.primaryDark,
                                       fontSize: 12,
                                       fontWeight: FontWeight.w800,
@@ -168,7 +168,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                                     children: [
                                       Text(
                                         comment.userName,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: AppColors.ink,
                                           fontWeight: FontWeight.w700,
                                           fontSize: 13,
@@ -177,7 +177,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                                       const SizedBox(height: 2),
                                       Text(
                                         comment.body,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: AppColors.ink,
                                           fontSize: 13,
                                           height: 1.35,

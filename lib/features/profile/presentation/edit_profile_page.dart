@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -107,9 +108,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
       final picked = await _picker.pickImage(
         source: source,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 70,
         requestFullMetadata: false,
       );
       if (picked == null || !mounted) return;
@@ -142,6 +143,51 @@ class _EditProfilePageState extends State<EditProfilePage> {
             : 'Galeri açılamadı: $error';
       });
     }
+  }
+
+  /// HEIC / büyük galeri fotoğraflarını JPEG’e sıkıştırır (bucket limitine sığsın).
+  Future<Uint8List> _compressAvatarBytes(XFile file) async {
+    const maxBytes = 900 * 1024; // ~900 KB hedef
+    var quality = 72;
+    var minSide = 900;
+
+    Future<Uint8List?> encode() async {
+      final result = await FlutterImageCompress.compressWithFile(
+        file.path,
+        minWidth: minSide,
+        minHeight: minSide,
+        quality: quality,
+        format: CompressFormat.jpeg,
+        keepExif: false,
+      );
+      return result == null ? null : Uint8List.fromList(result);
+    }
+
+    Uint8List? compressed = await encode();
+    // Hâlâ büyükse kaliteyi / boyutu düşür.
+    while (compressed != null &&
+        compressed.lengthInBytes > maxBytes &&
+        (quality > 40 || minSide > 512)) {
+      if (quality > 40) {
+        quality -= 12;
+      } else {
+        minSide = (minSide * 0.75).round().clamp(512, 900);
+      }
+      compressed = await encode();
+    }
+
+    if (compressed != null && compressed.isNotEmpty) {
+      return compressed;
+    }
+
+    // Fallback: orijinal bytes (nadiren compress başarısız).
+    final raw = await file.readAsBytes();
+    if (raw.lengthInBytes > 4 * 1024 * 1024) {
+      throw ArgumentError(
+        'Fotoğraf çok büyük. Daha düşük çözünürlüklü bir görsel seç.',
+      );
+    }
+    return raw;
   }
 
   void _showPhotoOptions() {
@@ -265,7 +311,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           child: avatarImage == null
                               ? Text(
                                   widget.profile.initials,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     color: AppColors.primaryDark,
                                     fontSize: 28,
                                     fontWeight: FontWeight.w800,
@@ -276,7 +322,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                       ),
                       Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: AppColors.primaryDark,
                           shape: BoxShape.circle,
                         ),
@@ -377,7 +423,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
             const SizedBox(height: 24),
             const _Label('Haftalık hedefler'),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Seçtiğin sporlar için bu haftanın hedefini yaz.',
               style: TextStyle(color: AppColors.mutedInk, fontSize: 12),
             ),
@@ -428,7 +474,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
             const SizedBox(height: 14),
             Text(
               _error!,
-              style: const TextStyle(color: Colors.red, fontSize: 12),
+              style: TextStyle(color: Colors.red, fontSize: 12),
             ),
           ],
           const SizedBox(height: 24),
@@ -484,11 +530,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
       final repo = ProfileRepository(client);
       String? nextAvatarUrl;
       if (_localAvatar != null) {
-        final bytes = await _localAvatar!.readAsBytes();
-        final mime = _localAvatar!.mimeType ?? 'image/jpeg';
+        final bytes = await _compressAvatarBytes(_localAvatar!);
         nextAvatarUrl = await repo.uploadAvatar(
           bytes: bytes,
-          contentType: mime,
+          contentType: 'image/jpeg',
         );
       } else if (_removeAvatar) {
         nextAvatarUrl = '';
@@ -539,7 +584,7 @@ class _Label extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: const TextStyle(
+      style: TextStyle(
         color: AppColors.ink,
         fontSize: 15,
         fontWeight: FontWeight.w800,
