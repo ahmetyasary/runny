@@ -91,18 +91,9 @@ class ActivitySessionController extends ChangeNotifier {
       elevationGainMeters > 0 ||
       watchDistanceMeters > 0;
 
-  /// Telefon GPS + saat mesafesi — asıl kaynağa göre tercih.
-  double get effectiveDistanceMeters {
-    if (isWatchPrimary) {
-      return watchDistanceMeters > 0 ? watchDistanceMeters : distanceMeters;
-    }
-    if (isPhonePrimary) {
-      return distanceMeters > 0 ? distanceMeters : watchDistanceMeters;
-    }
-    return distanceMeters > watchDistanceMeters
-        ? distanceMeters
-        : watchDistanceMeters;
-  }
+  /// Telefon GPS + saat mesafesi — bağlıyken büyüğü (senkron).
+  double get effectiveDistanceMeters =>
+      distanceMeters > watchDistanceMeters ? distanceMeters : watchDistanceMeters;
 
   String get formattedElapsed {
     final hours = elapsed.inHours.toString().padLeft(2, '0');

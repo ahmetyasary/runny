@@ -355,16 +355,44 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
   }
 
   private func syncElapsedFromPhone(_ seconds: Int) {
-    // Saat asıl kaynaksa telefon süresini yok say.
-    guard !isWatchPrimary else { return }
+    // Bağlıyken süre geri alınmaz; öndeki kazanır.
     let phone = max(0, seconds)
-    // Telefon gerideyse (eski paket) yerel saati geri alma.
-    if phone + 1 < elapsedSeconds { return }
+    if phone <= elapsedSeconds { return }
     recordingStartedAt = Date().addingTimeInterval(-Double(phone))
     elapsedSeconds = phone
     if isRecording, elapsedTimer == nil {
       startElapsedClock(from: phone)
     }
+  }
+
+  /// Telefon aktif koşuyu saate taşır (bağlıyken zorunlu senkron).
+  private func joinFromPhone(_ context: [String: Any], owner: String?) {
+    if let type = context["activityType"] as? String, !type.isEmpty {
+      activityType = type
+    }
+    let wasRecording = isRecording
+    isRecording = true
+    if sessionOwner == nil || sessionOwner == "phone" {
+      sessionOwner = owner ?? "phone"
+    }
+    let phoneElapsed = (context["elapsedSeconds"] as? Int)
+      ?? (context["elapsedSeconds"] as? Double).map { Int($0) }
+      ?? elapsedSeconds
+    if !wasRecording {
+      cancelCountdown()
+      routeCoordinates = []
+      startElapsedClock(from: phoneElapsed)
+      announceRecordingStarted(remote: true)
+    } else {
+      syncElapsedFromPhone(phoneElapsed)
+      if elapsedTimer == nil {
+        startElapsedClock(from: elapsedSeconds)
+      }
+    }
+    if let distance = context["distanceMeters"] as? Double {
+      distanceMeters = max(distanceMeters, distance)
+    }
+    ensureHealthRunning()
   }
 
   private func announceRecordingStarted(remote: Bool) {
@@ -544,35 +572,7 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
           NSLog("Runny Watch: ignore remote start (recent stop)")
           return
         }
-        // Saat zaten asıl kayıttaysa telefon start'ı sahipliği çalmaz.
-        if self.isWatchPrimary, self.isRecording {
-          self.ensureHealthRunning()
-          if self.elapsedTimer == nil {
-            self.startElapsedClock(from: self.elapsedSeconds)
-          }
-        } else {
-          if let type = context["activityType"] as? String, !type.isEmpty {
-            self.activityType = type
-          }
-          let wasRecording = self.isRecording
-          self.isRecording = true
-          self.sessionOwner = incomingOwner ?? "phone"
-          if !wasRecording {
-            self.cancelCountdown()
-            self.routeCoordinates = []
-            let phoneElapsed = (context["elapsedSeconds"] as? Int)
-              ?? (context["elapsedSeconds"] as? Double).map { Int($0) }
-              ?? 0
-            self.startElapsedClock(from: phoneElapsed)
-            self.ensureHealthRunning()
-            self.announceRecordingStarted(remote: true)
-          } else {
-            self.ensureHealthRunning()
-            if self.elapsedTimer == nil {
-              self.startElapsedClock(from: self.elapsedSeconds)
-            }
-          }
-        }
+        self.joinFromPhone(context, owner: incomingOwner)
       } else if action == "stop" {
         let wasRecording = self.isRecording
         self.isRecording = false
@@ -595,38 +595,26 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
         self.activityType = type
       }
 
-      // Süre: yalnızca telefon asılsa (veya sahiplik yokken) telefona uy.
-      if self.isRecording, !self.isWatchPrimary {
+      // Bağlıyken süre + mesafe senkron (geri alma yok).
+      if self.isRecording {
         if let elapsed = context["elapsedSeconds"] as? Int {
           self.syncElapsedFromPhone(elapsed)
         } else if let elapsed = context["elapsedSeconds"] as? Double {
           self.syncElapsedFromPhone(Int(elapsed))
         }
+        if let distance = context["distanceMeters"] as? Double {
+          self.distanceMeters = max(self.distanceMeters, distance)
+        }
       }
 
-      // Mesafe: telefon asılsa telefon GPS; saat asılsa yereli koru (health zaten yazar).
-      if self.isRecording, !self.isWatchPrimary, let distance = context["distanceMeters"] as? Double {
-        self.distanceMeters = distance
-      }
-
-      // update/health: kayıt kapalıysa ASLA yeniden başlatma (özellikle stop sonrası).
+      // update/sync: telefon aktif koşudaysa saat MUTLAKA katılsın.
       if action != "start", action != "stop", let recording = context["isRecording"] as? Bool {
         if recording {
           if self.shouldIgnoreRemoteStart {
             NSLog("Runny Watch: ignore remote recording update (recent stop)")
             return
           }
-          if !self.isRecording {
-            // Kapalıyken update ile otomatik start yok — yalnızca telefon action=start.
-            return
-          }
-          if self.sessionOwner == nil {
-            self.sessionOwner = incomingOwner ?? "phone"
-          }
-          self.ensureHealthRunning()
-          if self.elapsedTimer == nil {
-            self.startElapsedClock(from: self.elapsedSeconds)
-          }
+          self.joinFromPhone(context, owner: incomingOwner ?? self.sessionOwner ?? "phone")
         }
       }
       var nextLat = self.latitude
