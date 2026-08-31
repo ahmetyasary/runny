@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../core/config/supabase_config.dart';
 import '../../../core/models/activity.dart';
 import '../../../core/models/activity_mapping.dart';
+import '../../watch/data/watch_recent_activities_sync.dart';
 import '../data/activity_repository.dart';
 
 class ActivityHistoryController extends ChangeNotifier {
@@ -40,6 +41,7 @@ class ActivityHistoryController extends ChangeNotifier {
       avgPace = stats.avgPace;
       loading = false;
       notifyListeners();
+      await WatchRecentActivitiesSync.push(activities);
     } catch (e) {
       error = 'Aktiviteler yüklenemedi.';
       loading = false;
@@ -87,6 +89,8 @@ class ActivityHistoryController extends ChangeNotifier {
     activities = [activity, ...activities.where((item) => item.id != id)];
     _recomputeStats();
     notifyListeners();
+    // ignore: discarded_futures
+    WatchRecentActivitiesSync.push(activities);
   }
 
   void _recomputeStats() {

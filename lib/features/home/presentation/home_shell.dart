@@ -16,6 +16,7 @@ import '../../groups/presentation/groups_page.dart';
 import '../../profile/presentation/profile_page.dart';
 import '../../social/data/follow_realtime_controller.dart';
 import '../../social/presentation/public_profile_page.dart';
+import '../../watch/data/watch_recent_activities_sync.dart';
 import '../../watch/presentation/watch_session_sync.dart';
 
 class HomeShell extends StatefulWidget {
@@ -42,7 +43,7 @@ class _HomeShellState extends State<HomeShell> {
     _session.addListener(_onSessionChanged);
     _watchSync = WatchSessionSync(_session);
     _watchSync.start();
-    _history.refresh();
+    unawaited(_bootstrapHistory());
     _followRealtime.onFollowNotification = (item) {
       _feedKey.currentState?.ingestFollowNotification(item);
     };
@@ -96,6 +97,11 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
+  Future<void> _bootstrapHistory() async {
+    await _history.refresh();
+    await WatchRecentActivitiesSync.push(_history.activities);
+  }
+
   Future<void> _completeActivity(ActivityStopResult result) async {
     await _watchSync.notifyStopped();
     _history.addCompleted(
@@ -112,6 +118,7 @@ class _HomeShellState extends State<HomeShell> {
     );
     // Uzak listeyi de senkronla (buluta yazıldıysa).
     await _history.refresh();
+    await WatchRecentActivitiesSync.push(_history.activities);
     // Diğer sekmeler de güncel kalsın.
     _feedKey.currentState?.refresh(silent: true);
     _discoverKey.currentState?.refresh(silent: true);

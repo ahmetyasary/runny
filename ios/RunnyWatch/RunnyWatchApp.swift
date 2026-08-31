@@ -39,6 +39,102 @@ enum WatchSports {
   static func sport(forLabel label: String) -> WatchSport? {
     all.first { $0.label == label }
   }
+
+  static func sport(forTypeKey key: String) -> WatchSport? {
+    switch key {
+    case "walk": return all.first { $0.id == "walk" }
+    case "run": return all.first { $0.id == "run" }
+    case "bike": return all.first { $0.id == "bike" }
+    case "swim": return all.first { $0.id == "swim" }
+    case "hike": return all.first { $0.id == "hike" }
+    case "trail": return all.first { $0.id == "trail" }
+    case "gym": return all.first { $0.id == "gym" }
+    case "yoga": return all.first { $0.id == "yoga" }
+    default: return sport(forLabel: key)
+    }
+  }
+}
+
+struct WatchRecentActivity: Identifiable, Hashable {
+  let id: String
+  let typeLabel: String
+  let typeKey: String
+  let title: String
+  let distanceKm: Double
+  let durationSeconds: Int
+  let durationLabel: String
+  let calories: Int
+  let elevationGainMeters: Int
+  let avgHeartRate: Int?
+  let maxHeartRate: Int?
+  let paceLabel: String?
+  let whenLabel: String
+  let location: String
+
+  var sport: WatchSport {
+    WatchSports.sport(forTypeKey: typeKey)
+      ?? WatchSports.sport(forLabel: typeLabel)
+      ?? WatchSports.all[1]
+  }
+
+  var distanceLabel: String {
+    String(format: "%.2f km", distanceKm)
+  }
+
+  static func fromDictionary(_ dict: [String: Any]) -> WatchRecentActivity? {
+    guard let id = dict["id"] as? String else { return nil }
+    let typeLabel = (dict["type"] as? String) ?? "Aktivite"
+    let typeKey = (dict["typeKey"] as? String) ?? typeLabel
+    let title = (dict["title"] as? String) ?? typeLabel
+    let distanceKm = (dict["distanceKm"] as? Double)
+      ?? (dict["distanceKm"] as? NSNumber)?.doubleValue
+      ?? 0
+    let durationSeconds = (dict["durationSeconds"] as? Int)
+      ?? (dict["durationSeconds"] as? NSNumber)?.intValue
+      ?? 0
+    let durationLabel = (dict["durationLabel"] as? String)
+      ?? formatDuration(durationSeconds)
+    let calories = (dict["calories"] as? Int)
+      ?? (dict["calories"] as? NSNumber)?.intValue
+      ?? 0
+    let elevation = (dict["elevationGainMeters"] as? Int)
+      ?? (dict["elevationGainMeters"] as? NSNumber)?.intValue
+      ?? 0
+    let avgHr = (dict["avgHeartRate"] as? Int)
+      ?? (dict["avgHeartRate"] as? NSNumber)?.intValue
+    let maxHr = (dict["maxHeartRate"] as? Int)
+      ?? (dict["maxHeartRate"] as? NSNumber)?.intValue
+    let pace = dict["paceLabel"] as? String
+    let when = (dict["when"] as? String) ?? ""
+    let location = (dict["location"] as? String) ?? ""
+
+    return WatchRecentActivity(
+      id: id,
+      typeLabel: typeLabel,
+      typeKey: typeKey,
+      title: title,
+      distanceKm: distanceKm,
+      durationSeconds: durationSeconds,
+      durationLabel: durationLabel,
+      calories: calories,
+      elevationGainMeters: elevation,
+      avgHeartRate: avgHr,
+      maxHeartRate: maxHr,
+      paceLabel: pace,
+      whenLabel: when,
+      location: location
+    )
+  }
+
+  private static func formatDuration(_ seconds: Int) -> String {
+    let h = seconds / 3600
+    let m = (seconds % 3600) / 60
+    let s = seconds % 60
+    if h > 0 {
+      return String(format: "%d:%02d:%02d", h, m, s)
+    }
+    return String(format: "%02d:%02d", m, s)
+  }
 }
 
 @MainActor
@@ -48,6 +144,9 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
   @Published var distanceMeters: Double = 0
   @Published var isRecording: Bool = false
   @Published var phoneReachable: Bool = false
+  /// Aktiviteyi kim başlattı: "watch" | "phone" | nil
+  @Published var sessionOwner: String? = nil
+  @Published var recentActivities: [WatchRecentActivity] = []
   @Published var latitude: Double?
   @Published var longitude: Double?
   /// Telefon GPS noktalarından biriken rota.
@@ -60,6 +159,9 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
   private var pushTimer: Timer?
   private var healthTickTimer: Timer?
   private var countdownTimer: Timer?
+  private var elapsedTimer: Timer?
+  private var recordingStartedAt: Date?
+  private var lastOfflineSyncAt: Date?
   private var pendingSportLabel: String?
 
   override init() {
@@ -74,6 +176,47 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
       self?.scheduleHealthPush()
     }
     UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    loadRecentActivitiesFromDisk()
+  }
+
+  private static let recentActivitiesKey = "runny.recentActivities"
+
+  private func loadRecentActivitiesFromDisk() {
+    guard let data = UserDefaults.standard.array(forKey: Self.recentActivitiesKey) as? [[String: Any]] else {
+      return
+    }
+    recentActivities = data.compactMap(WatchRecentActivity.fromDictionary)
+  }
+
+  private func persistRecentActivities() {
+    let encoded: [[String: Any]] = recentActivities.map { item in
+      var map: [String: Any] = [
+        "id": item.id,
+        "type": item.typeLabel,
+        "typeKey": item.typeKey,
+        "title": item.title,
+        "distanceKm": item.distanceKm,
+        "durationSeconds": item.durationSeconds,
+        "durationLabel": item.durationLabel,
+        "calories": item.calories,
+        "elevationGainMeters": item.elevationGainMeters,
+        "when": item.whenLabel,
+        "location": item.location,
+      ]
+      if let avg = item.avgHeartRate { map["avgHeartRate"] = avg }
+      if let max = item.maxHeartRate { map["maxHeartRate"] = max }
+      if let pace = item.paceLabel { map["paceLabel"] = pace }
+      return map
+    }
+    UserDefaults.standard.set(encoded, forKey: Self.recentActivitiesKey)
+  }
+
+  func applyRecentActivities(from context: [String: Any]) {
+    let raw = context["activities"] as? [[String: Any]]
+      ?? context["recentActivities"] as? [[String: Any]]
+      ?? []
+    recentActivities = Array(raw.compactMap(WatchRecentActivity.fromDictionary).prefix(5))
+    persistRecentActivities()
   }
 
   var formattedElapsed: String {
@@ -99,6 +242,9 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
     let s = Int(secPerKm) % 60
     return String(format: "%d'%02d\"", m, s)
   }
+
+  var isWatchPrimary: Bool { sessionOwner == "watch" }
+  var isPhonePrimary: Bool { sessionOwner == "phone" }
 
   var heartLabel: String {
     if let bpm = health.heartRateBpm {
@@ -173,14 +319,49 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
   func requestStart(type: String) {
     cancelCountdown()
     isRecording = true
+    sessionOwner = "watch"
     activityType = type
-    elapsedSeconds = 0
     distanceMeters = 0
     routeCoordinates = []
-    send(["type": "start", "action": "start", "activityType": type])
+    lastOfflineSyncAt = nil
+    startElapsedClock(from: 0)
+    // Start her zaman kuyruğa da yazılsın (telefon şimdi yoksa sonra gelsin).
+    send(buildSnapshot(type: "start", action: "start"), important: true)
     Task { await health.start(activityLabel: type) }
     startHealthTick()
     announceRecordingStarted(remote: false)
+  }
+
+  private func startElapsedClock(from seconds: Int) {
+    stopElapsedClock()
+    let clamped = max(0, seconds)
+    recordingStartedAt = Date().addingTimeInterval(-Double(clamped))
+    elapsedSeconds = clamped
+    elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+      Task { @MainActor in
+        guard let self, self.isRecording, let start = self.recordingStartedAt else { return }
+        self.elapsedSeconds = max(0, Int(Date().timeIntervalSince(start)))
+      }
+    }
+  }
+
+  private func stopElapsedClock() {
+    elapsedTimer?.invalidate()
+    elapsedTimer = nil
+    recordingStartedAt = nil
+  }
+
+  private func syncElapsedFromPhone(_ seconds: Int) {
+    // Saat asıl kaynaksa telefon süresini yok say.
+    guard !isWatchPrimary else { return }
+    let phone = max(0, seconds)
+    // Telefon gerideyse (eski paket) yerel saati geri alma.
+    if phone + 1 < elapsedSeconds { return }
+    recordingStartedAt = Date().addingTimeInterval(-Double(phone))
+    elapsedSeconds = phone
+    if isRecording, elapsedTimer == nil {
+      startElapsedClock(from: phone)
+    }
   }
 
   private func announceRecordingStarted(remote: Bool) {
@@ -201,12 +382,16 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
 
   func requestStop() {
     Task {
+      // Bitirme özetini önce yakala; bağlantı yoksa transferUserInfo ile gider.
+      let stopPayload = buildSnapshot(type: "stop", action: "stop")
       isRecording = false
+      sessionOwner = nil
+      stopElapsedClock()
       stopHealthTick()
-      pushHealthToPhone()
       await health.stop()
-      send(["type": "stop", "action": "stop"])
+      send(stopPayload, important: true)
       routeCoordinates = []
+      lastOfflineSyncAt = nil
     }
   }
 
@@ -257,37 +442,73 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
     }
   }
 
-  private func pushHealthToPhone() {
-    guard isRecording else { return }
+  private func buildSnapshot(type: String, action: String) -> [String: Any] {
     var payload: [String: Any] = [
-      "type": "health",
-      "action": "health",
+      "type": type,
+      "action": action,
       "elevationGainMeters": health.elevationGainMeters,
       "activeEnergyKcal": health.activeEnergyKcal,
       "watchDistanceMeters": health.distanceMeters,
-      "isRecording": true,
+      "isRecording": action == "stop"
+        ? false
+        : (isRecording || action == "start" || action == "sync"),
       "activityType": activityType,
       "elapsedSeconds": elapsedSeconds,
       "distanceMeters": displayDistanceMeters,
       "source": "watch",
+      "sessionOwner": sessionOwner ?? "watch",
     ]
+    if let started = recordingStartedAt {
+      let formatter = ISO8601DateFormatter()
+      payload["startedAt"] = formatter.string(from: started)
+    }
     if let bpm = health.heartRateBpm { payload["heartRateBpm"] = bpm }
     if let avg = health.averageHeartRateBpm { payload["averageHeartRateBpm"] = avg }
     if let max = health.maxHeartRateBpm { payload["maxHeartRateBpm"] = max }
     if let alt = health.altitudeMeters { payload["altitudeMeters"] = alt }
     if let latitude { payload["latitude"] = latitude }
     if let longitude { payload["longitude"] = longitude }
-    send(payload)
+    return payload
   }
 
-  private func send(_ payload: [String: Any]) {
+  private func pushHealthToPhone() {
+    guard isRecording else { return }
+    let session = WCSession.default
+    if session.isReachable {
+      send(buildSnapshot(type: "health", action: "health"))
+      return
+    }
+    // Offline: kuyruğu şişirmemek için ~30 sn'de bir sync snapshot.
+    let now = Date()
+    if let last = lastOfflineSyncAt, now.timeIntervalSince(last) < 30 {
+      return
+    }
+    lastOfflineSyncAt = now
+    send(buildSnapshot(type: "sync", action: "sync"), important: true)
+  }
+
+  /// Bağlantı geri gelince kaldığı yerden tek paket aktar.
+  private func flushCatchUpToPhone() {
+    guard isRecording else { return }
+    lastOfflineSyncAt = Date()
+    send(buildSnapshot(type: "sync", action: "sync"), important: true)
+    NSLog("Runny Watch: reconnect sync elapsed=\(elapsedSeconds) dist=\(displayDistanceMeters)")
+  }
+
+  /// - important: true → reachable değilse transferUserInfo kuyruğuna yaz
+  /// - important: false → yalnızca anlık sendMessage (offline'da atlanır)
+  private func send(_ payload: [String: Any], important: Bool = false) {
     let session = WCSession.default
     guard session.activationState == .activated else { return }
     if session.isReachable {
       session.sendMessage(payload, replyHandler: nil) { error in
         NSLog("Watch→Phone error: \(error.localizedDescription)")
+        // Anlık gönderim başarısızsa kritik paketleri kuyruğa düşür.
+        if important {
+          session.transferUserInfo(payload)
+        }
       }
-    } else {
+    } else if important {
       session.transferUserInfo(payload)
     }
   }
@@ -296,25 +517,50 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
     Task { @MainActor in
       let action = (context["action"] as? String) ?? (context["type"] as? String) ?? ""
 
+      if action == "recentActivities" || context["activities"] is [[String: Any]] {
+        self.applyRecentActivities(from: context)
+        if action == "recentActivities" { return }
+      }
+
+      let incomingOwner = context["sessionOwner"] as? String
+
       // Telefondan gelen start/stop kesin sınır — yanlışlıkla kapanmayı engelle.
       if action == "start" {
-        if let type = context["activityType"] as? String, !type.isEmpty {
-          self.activityType = type
-        }
-        let wasRecording = self.isRecording
-        self.isRecording = true
-        if !wasRecording {
-          self.cancelCountdown()
-          self.routeCoordinates = []
+        // Saat zaten asıl kayıttaysa telefon start'ı sahipliği çalmaz.
+        if self.isWatchPrimary, self.isRecording {
           self.ensureHealthRunning()
-          self.announceRecordingStarted(remote: true)
+          if self.elapsedTimer == nil {
+            self.startElapsedClock(from: self.elapsedSeconds)
+          }
         } else {
-          self.ensureHealthRunning()
+          if let type = context["activityType"] as? String, !type.isEmpty {
+            self.activityType = type
+          }
+          let wasRecording = self.isRecording
+          self.isRecording = true
+          self.sessionOwner = incomingOwner ?? "phone"
+          if !wasRecording {
+            self.cancelCountdown()
+            self.routeCoordinates = []
+            let phoneElapsed = (context["elapsedSeconds"] as? Int)
+              ?? (context["elapsedSeconds"] as? Double).map { Int($0) }
+              ?? 0
+            self.startElapsedClock(from: phoneElapsed)
+            self.ensureHealthRunning()
+            self.announceRecordingStarted(remote: true)
+          } else {
+            self.ensureHealthRunning()
+            if self.elapsedTimer == nil {
+              self.startElapsedClock(from: self.elapsedSeconds)
+            }
+          }
         }
       } else if action == "stop" {
         let wasRecording = self.isRecording
         self.isRecording = false
+        self.sessionOwner = nil
         if wasRecording {
+          self.stopElapsedClock()
           self.stopHealthTick()
           await self.health.stop()
           self.routeCoordinates = []
@@ -324,30 +570,51 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
       if let type = context["activityType"] as? String, !type.isEmpty {
         self.activityType = type
       }
-      if let elapsed = context["elapsedSeconds"] as? Int {
-        self.elapsedSeconds = elapsed
-      } else if let elapsed = context["elapsedSeconds"] as? Double {
-        self.elapsedSeconds = Int(elapsed)
+
+      // Süre: yalnızca telefon asılsa (veya sahiplik yokken) telefona uy.
+      if !self.isWatchPrimary {
+        if let elapsed = context["elapsedSeconds"] as? Int {
+          self.syncElapsedFromPhone(elapsed)
+        } else if let elapsed = context["elapsedSeconds"] as? Double {
+          self.syncElapsedFromPhone(Int(elapsed))
+        }
       }
-      if let distance = context["distanceMeters"] as? Double {
+
+      // Mesafe: telefon asılsa telefon GPS; saat asılsa yereli koru (health zaten yazar).
+      if !self.isWatchPrimary, let distance = context["distanceMeters"] as? Double {
         self.distanceMeters = distance
       }
+
       // health / update: yalnızca isRecording true iken workout'u ayakta tut;
       // false gelince stop olmadan workout'u KESME (yanlış kapanmayı önler).
       if action != "start", action != "stop", let recording = context["isRecording"] as? Bool {
         if recording {
           let wasRecording = self.isRecording
           self.isRecording = true
+          if self.sessionOwner == nil {
+            self.sessionOwner = incomingOwner ?? "phone"
+          }
           if !wasRecording {
-            self.cancelCountdown()
-            self.routeCoordinates = []
-            self.ensureHealthRunning()
-            self.announceRecordingStarted(remote: true)
+            // Saat asılken telefonda update ile yeni kayıt açma.
+            if self.isWatchPrimary {
+              self.ensureHealthRunning()
+            } else {
+              self.cancelCountdown()
+              self.routeCoordinates = []
+              let phoneElapsed = (context["elapsedSeconds"] as? Int)
+                ?? (context["elapsedSeconds"] as? Double).map { Int($0) }
+                ?? 0
+              self.startElapsedClock(from: phoneElapsed)
+              self.ensureHealthRunning()
+              self.announceRecordingStarted(remote: true)
+            }
           } else {
             self.ensureHealthRunning()
+            if self.elapsedTimer == nil {
+              self.startElapsedClock(from: self.elapsedSeconds)
+            }
           }
         } else if self.isRecording {
-          // idle / isRecording=false → workout'u durdurma; telefon stop göndermeli.
           self.ensureHealthRunning()
         }
       }
@@ -380,12 +647,21 @@ final class WatchActivityModel: NSObject, ObservableObject, WCSessionDelegate {
   ) {
     Task { @MainActor in
       self.phoneReachable = session.isReachable
+      if session.isReachable {
+        self.flushCatchUpToPhone()
+      }
     }
   }
 
   func sessionReachabilityDidChange(_ session: WCSession) {
     Task { @MainActor in
-      self.phoneReachable = session.isReachable
+      let reachable = session.isReachable
+      let wasReachable = self.phoneReachable
+      self.phoneReachable = reachable
+      // Kopukken devam ettiyse bağlanır bağlanmaz anlık durum aktar.
+      if reachable, !wasReachable {
+        self.flushCatchUpToPhone()
+      }
     }
   }
 
@@ -424,6 +700,33 @@ struct SportPickerView: View {
   var body: some View {
     NavigationStack {
       List {
+        if !session.recentActivities.isEmpty {
+          Section {
+            ForEach(session.recentActivities) { activity in
+              NavigationLink {
+                RecentActivityDetailView(activity: activity)
+              } label: {
+                RecentActivityRow(activity: activity)
+              }
+            }
+          } header: {
+            Text("Son 5 aktivite")
+          }
+        } else {
+          Section {
+            VStack(alignment: .leading, spacing: 4) {
+              Text("Henüz aktivite yok")
+                .font(.caption.weight(.semibold))
+              Text("Telefondan senkron gelince burada görünür.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 2)
+          } header: {
+            Text("Son aktiviteler")
+          }
+        }
+
         Section {
           ForEach(WatchSports.all) { sport in
             Button {
@@ -448,7 +751,7 @@ struct SportPickerView: View {
             }
           }
         } header: {
-          Text("Aktivite")
+          Text("Yeni aktivite")
         }
       }
       .navigationTitle("Runny")
@@ -459,6 +762,161 @@ struct SportPickerView: View {
         }
       }
     }
+  }
+}
+
+struct RecentActivityRow: View {
+  let activity: WatchRecentActivity
+
+  var body: some View {
+    HStack(spacing: 10) {
+      ZStack {
+        Circle()
+          .fill(activity.sport.tint.opacity(0.22))
+          .frame(width: 34, height: 34)
+        Image(systemName: activity.sport.symbol)
+          .font(.system(size: 14, weight: .semibold))
+          .foregroundStyle(activity.sport.tint)
+      }
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(activity.typeLabel)
+          .font(.system(.caption, design: .rounded).weight(.bold))
+          .foregroundStyle(activity.sport.tint)
+        Text(activity.distanceLabel)
+          .font(.system(.body, design: .rounded).weight(.semibold))
+        HStack(spacing: 6) {
+          Text(activity.durationLabel)
+          if let pace = activity.paceLabel {
+            Text("·")
+            Text(pace.replacingOccurrences(of: " /km", with: ""))
+          }
+        }
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        if !activity.whenLabel.isEmpty {
+          Text(activity.whenLabel)
+            .font(.system(size: 10))
+            .foregroundStyle(.tertiary)
+        }
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(.vertical, 2)
+  }
+}
+
+struct RecentActivityDetailView: View {
+  let activity: WatchRecentActivity
+
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 10) {
+        HStack(spacing: 8) {
+          ZStack {
+            Circle()
+              .fill(activity.sport.tint.opacity(0.25))
+              .frame(width: 40, height: 40)
+            Image(systemName: activity.sport.symbol)
+              .font(.system(size: 16, weight: .bold))
+              .foregroundStyle(activity.sport.tint)
+          }
+          VStack(alignment: .leading, spacing: 2) {
+            Text(activity.typeLabel)
+              .font(.headline.weight(.bold))
+              .foregroundStyle(activity.sport.tint)
+            if !activity.whenLabel.isEmpty {
+              Text(activity.whenLabel)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            }
+          }
+          Spacer(minLength: 0)
+        }
+
+        Text(activity.title)
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.primary)
+          .lineLimit(2)
+
+        LazyVGrid(
+          columns: [
+            GridItem(.flexible(), spacing: 6),
+            GridItem(.flexible(), spacing: 6),
+          ],
+          spacing: 6
+        ) {
+          RecentMetricTile(
+            title: "Mesafe",
+            value: activity.distanceLabel,
+            tint: activity.sport.tint
+          )
+          RecentMetricTile(
+            title: "Süre",
+            value: activity.durationLabel,
+            tint: activity.sport.tint
+          )
+          if let pace = activity.paceLabel {
+            RecentMetricTile(title: "Tempo", value: pace, tint: activity.sport.tint)
+          }
+          if activity.elevationGainMeters > 0 {
+            RecentMetricTile(
+              title: "Yükseliş",
+              value: "\(activity.elevationGainMeters) m",
+              tint: activity.sport.tint
+            )
+          }
+          if activity.calories > 0 {
+            RecentMetricTile(
+              title: "Kalori",
+              value: "\(activity.calories)",
+              tint: activity.sport.tint
+            )
+          }
+          if let avg = activity.avgHeartRate {
+            RecentMetricTile(title: "Ort. nabız", value: "\(avg)", tint: .red)
+          }
+          if let max = activity.maxHeartRate {
+            RecentMetricTile(title: "Max nabız", value: "\(max)", tint: .red)
+          }
+        }
+
+        if !activity.location.isEmpty, activity.location != "Konum yok" {
+          Label(activity.location, systemImage: "mappin.and.ellipse")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.top, 2)
+        }
+      }
+      .padding(.horizontal, 4)
+    }
+    .navigationTitle("Özet")
+  }
+}
+
+struct RecentMetricTile: View {
+  let title: String
+  let value: String
+  let tint: Color
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 3) {
+      Text(title.uppercased())
+        .font(.system(size: 9, weight: .bold))
+        .foregroundStyle(.secondary)
+      Text(value)
+        .font(.system(.caption, design: .rounded).weight(.bold))
+        .foregroundStyle(tint)
+        .minimumScaleFactor(0.7)
+        .lineLimit(1)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.horizontal, 8)
+    .padding(.vertical, 7)
+    .background(
+      RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .fill(tint.opacity(0.12))
+    )
   }
 }
 

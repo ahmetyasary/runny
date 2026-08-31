@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
@@ -7,6 +8,8 @@ import 'package:latlong2/latlong.dart';
 import '../../../core/config/supabase_config.dart';
 import '../../watch/data/watch_bridge.dart';
 import '../data/activity_repository.dart';
+
+enum ActivitySessionOrigin { phone, watch }
 
 class ActivityStopResult {
   const ActivityStopResult({
@@ -61,6 +64,12 @@ class ActivitySessionController extends ChangeNotifier {
   StreamSubscription<Position>? _positionSubscription;
   Timer? _timer;
 
+  /// Aktiviteyi ilk başlatan cihaz — o taraf süre/mesafe için asıl kaynaktır.
+  ActivitySessionOrigin? origin;
+
+  bool get isWatchPrimary => origin == ActivitySessionOrigin.watch;
+  bool get isPhonePrimary => origin == ActivitySessionOrigin.phone;
+
   bool get hasActiveSession =>
       isRecording || (points.isNotEmpty && elapsed > Duration.zero);
 
@@ -71,9 +80,18 @@ class ActivitySessionController extends ChangeNotifier {
       elevationGainMeters > 0 ||
       watchDistanceMeters > 0;
 
-  /// Telefon GPS + saat mesafesinin büyüğü.
-  double get effectiveDistanceMeters =>
-      distanceMeters > watchDistanceMeters ? distanceMeters : watchDistanceMeters;
+  /// Telefon GPS + saat mesafesi — asıl kaynağa göre tercih.
+  double get effectiveDistanceMeters {
+    if (isWatchPrimary) {
+      return watchDistanceMeters > 0 ? watchDistanceMeters : distanceMeters;
+    }
+    if (isPhonePrimary) {
+      return distanceMeters > 0 ? distanceMeters : watchDistanceMeters;
+    }
+    return distanceMeters > watchDistanceMeters
+        ? distanceMeters
+        : watchDistanceMeters;
+  }
 
   String get formattedElapsed {
     final hours = elapsed.inHours.toString().padLeft(2, '0');
@@ -136,10 +154,74 @@ class ActivitySessionController extends ChangeNotifier {
     if (alt != null) altitudeMeters = alt;
     final kcal = asDouble(payload['activeEnergyKcal']);
     if (kcal != null) activeEnergyKcal = kcal;
-    final watchDist = asDouble(payload['watchDistanceMeters']);
-    if (watchDist != null) watchDistanceMeters = watchDist;
+    final watchDist = asDouble(payload['watchDistanceMeters']) ??
+        asDouble(payload['distanceMeters']);
+    if (watchDist != null && watchDist > watchDistanceMeters) {
+      watchDistanceMeters = watchDist;
+    }
     lastWatchHealthAt = DateTime.now();
     notifyListeners();
+  }
+
+  /// Saat offline ilerlediyse telefon süresini yakala (geri alma).
+  void catchUpElapsedFromWatch(int seconds) {
+    if (seconds <= elapsed.inSeconds) return;
+    elapsed = Duration(seconds: seconds);
+    notifyListeners();
+  }
+
+  /// Asıl kaynak saatsa süreyi saate sabitle.
+  void setElapsedFromWatchPrimary(int seconds) {
+    final next = Duration(seconds: math.max(0, seconds));
+    if (next == elapsed) return;
+    elapsed = next;
+    notifyListeners();
+  }
+
+  int? _readElapsedSeconds(Map<String, dynamic> payload) {
+    final raw = payload['elapsedSeconds'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.round();
+    if (raw is String) return int.tryParse(raw);
+    final startedAt = payload['startedAt'];
+    if (startedAt is String) {
+      final start = DateTime.tryParse(startedAt);
+      if (start != null) {
+        return DateTime.now().difference(start).inSeconds.clamp(0, 86400 * 7);
+      }
+    }
+    return null;
+  }
+
+  /// Saat snapshot'ı: kayıt yoksa Watch-origin ile başlat.
+  Future<bool> adoptWatchSnapshot(Map<String, dynamic> payload) async {
+    final type = payload['activityType'] as String? ?? activityType ?? 'Koşu';
+    final recording = payload['isRecording'] as bool? ?? true;
+    if (!recording) return false;
+
+    var startedNow = false;
+    if (!isRecording) {
+      final ok = await start(
+        type,
+        origin: ActivitySessionOrigin.watch,
+        announceToWatch: false,
+      );
+      if (!ok) return false;
+      startedNow = true;
+    }
+
+    // Telefon asıl ise saatten sadece sağlık metrikleri gelir.
+    applyWatchHealth(payload);
+
+    final watchElapsed = _readElapsedSeconds(payload);
+    if (watchElapsed != null) {
+      if (isWatchPrimary) {
+        setElapsedFromWatchPrimary(watchElapsed);
+      } else if (!isPhonePrimary) {
+        catchUpElapsedFromWatch(watchElapsed);
+      }
+    }
+    return startedNow;
   }
 
   void _resetHealth() {
@@ -153,32 +235,75 @@ class ActivitySessionController extends ChangeNotifier {
     lastWatchHealthAt = null;
   }
 
-  Future<bool> start(String type) async {
-    if (!await _ensurePermission()) return false;
+  Future<bool> start(
+    String type, {
+    ActivitySessionOrigin origin = ActivitySessionOrigin.phone,
+    bool announceToWatch = true,
+  }) async {
+    if (isRecording) return true;
 
-    try {
-      final position = await Geolocator.getCurrentPosition();
-      points
-        ..clear()
-        ..add(LatLng(position.latitude, position.longitude));
-      distanceMeters = 0;
-      elapsed = Duration.zero;
-      _resetHealth();
-      if (position.altitude.isFinite) {
-        altitudeMeters = position.altitude;
-      }
-      activityType = type;
-    } catch (_) {
-      return false;
-    }
-
+    activityType = type;
+    this.origin = origin;
+    points.clear();
+    distanceMeters = 0;
+    elapsed = Duration.zero;
+    _resetHealth();
     isRecording = true;
     isMinimized = false;
+
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       elapsed += const Duration(seconds: 1);
       notifyListeners();
     });
+
+    notifyListeners();
+
+    unawaited(_beginLocationTracking());
+
+    if (announceToWatch) {
+      final last = points.isEmpty ? null : points.last;
+      await WatchBridge.sendSessionUpdate(
+        action: 'start',
+        activityType: type,
+        elapsedSeconds: 0,
+        distanceMeters: 0,
+        isRecording: true,
+        sessionOwner: origin.name,
+        latitude: last?.latitude,
+        longitude: last?.longitude,
+      );
+      await WatchBridge.launchWatchWorkout(type);
+    }
+    return true;
+  }
+
+  Future<void> _beginLocationTracking() async {
+    if (!await _ensurePermission()) {
+      debugPrint('Activity start: konum izni yok — süre yine de işliyor');
+      return;
+    }
+
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+      if (!isRecording) return;
+      if (points.isEmpty) {
+        points.add(LatLng(position.latitude, position.longitude));
+      }
+      if (position.altitude.isFinite) {
+        altitudeMeters = position.altitude;
+      }
+      notifyListeners();
+    } catch (error) {
+      debugPrint('Activity start: ilk konum alınamadı ($error)');
+    }
+
+    if (!isRecording) return;
 
     await _positionSubscription?.cancel();
     _positionSubscription = Geolocator.getPositionStream(
@@ -187,6 +312,7 @@ class ActivitySessionController extends ChangeNotifier {
         distanceFilter: 5,
       ),
     ).listen((position) {
+      if (!isRecording) return;
       final point = LatLng(position.latitude, position.longitude);
       if (points.isNotEmpty) {
         distanceMeters += const Distance().as(
@@ -201,22 +327,6 @@ class ActivitySessionController extends ChangeNotifier {
       }
       notifyListeners();
     });
-
-    notifyListeners();
-    // Live Activity + Watch: WatchSessionSync + native side-effects
-    // (sendSessionUpdate action=start) üstlenir; burada sınır payload'ı atılır.
-    final last = points.isEmpty ? null : points.last;
-    await WatchBridge.sendSessionUpdate(
-      action: 'start',
-      activityType: type,
-      elapsedSeconds: 0,
-      distanceMeters: 0,
-      isRecording: true,
-      latitude: last?.latitude,
-      longitude: last?.longitude,
-    );
-    await WatchBridge.launchWatchWorkout(type);
-    return true;
   }
 
   void minimize() {
@@ -275,7 +385,9 @@ class ActivitySessionController extends ChangeNotifier {
       }
     }
 
+    final ownerName = origin?.name;
     activityType = null;
+    origin = null;
     points.clear();
     distanceMeters = 0;
     elapsed = Duration.zero;
@@ -290,6 +402,7 @@ class ActivitySessionController extends ChangeNotifier {
       elapsedSeconds: duration.inSeconds,
       distanceMeters: distance,
       isRecording: false,
+      sessionOwner: ownerName,
       latitude: last?.latitude,
       longitude: last?.longitude,
     );

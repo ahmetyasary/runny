@@ -7,10 +7,8 @@ import '../data/watch_bridge.dart';
 
 /// Aktivite oturumunu Apple Watch + Live Activity ile senkron tutar.
 ///
-/// Kayıt boyunca:
-/// - Live Activity / Watch metrikleri ~1 sn'de bir güncellenir
-/// - Watch uzaksa periyodik `startWatchApp` ile workout yeniden uyandırılır
-/// - Live Activity yalnızca `stop` ile kapanır (iOS tarafı)
+/// Asıl kaynak kuralı: aktivite nereden başladıysa o cihaz süre/mesafe için
+/// otoritedir. Diğeri takipçi olarak metrik alır / gösterir.
 class WatchSessionSync {
   WatchSessionSync(this.session);
 
@@ -21,6 +19,7 @@ class WatchSessionSync {
   Timer? _watchKeepAliveTimer;
   bool _started = false;
   bool _wasRecording = false;
+  bool _wasWatchReachable = false;
 
   Future<void> start() async {
     if (_started) return;
@@ -29,15 +28,15 @@ class WatchSessionSync {
     session.addListener(_onSessionChanged);
     _watchSub = WatchBridge.events.listen(_onWatchEvent);
     await _refreshWatchStatus();
+    _wasWatchReachable = session.watchReachable;
     _statusTimer = Timer.periodic(
       const Duration(seconds: 3),
       (_) => unawaited(_refreshWatchStatus()),
     );
-    // Uygulama açılışında kayıt yoksa Live Activity'ye dokunma.
     if (session.isRecording) {
       _wasRecording = true;
       _startRecordingKeepAlives();
-      await _push(action: 'start');
+      await _push(action: session.isWatchPrimary ? 'update' : 'start');
     }
   }
 
@@ -50,7 +49,14 @@ class WatchSessionSync {
 
   Future<void> _refreshWatchStatus() async {
     final status = await WatchBridge.getStatus();
-    session.setWatchReachable(status.isConnected);
+    final connected = status.isConnected;
+    final becameReachable = connected && !_wasWatchReachable;
+    session.setWatchReachable(connected);
+    _wasWatchReachable = connected;
+
+    if (becameReachable && session.isRecording && session.isPhonePrimary) {
+      await _push(action: 'update');
+    }
   }
 
   void _onSessionChanged() {
@@ -58,29 +64,30 @@ class WatchSessionSync {
     if (recording && !_wasRecording) {
       _wasRecording = true;
       _startRecordingKeepAlives();
-      // Controller zaten start gönderir; yine de emin ol.
-      unawaited(_push(action: 'start'));
-      unawaited(
-        WatchBridge.launchWatchWorkout(session.activityType ?? 'Koşu'),
-      );
+      if (session.isPhonePrimary) {
+        unawaited(_push(action: 'start'));
+        unawaited(
+          WatchBridge.launchWatchWorkout(session.activityType ?? 'Koşu'),
+        );
+      } else {
+        // Saat asıl — telefonda mirror; saati yeniden başlatma.
+        unawaited(_push(action: 'update'));
+      }
     } else if (!recording && _wasRecording) {
       _wasRecording = false;
       _stopRecordingKeepAlives();
-      // Controller stop gönderir; ekstra idle ile LA kapatma.
     }
-    // Kayıt sırasında metrikler heartbeat (1 sn) ile gider.
   }
 
   void _startRecordingKeepAlives() {
     _heartbeatTimer?.cancel();
-    // Live Activity stale olmasın diye düzenli update.
     _heartbeatTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!session.isRecording) return;
+      // Watch asılken Live Activity için update; saat süresini ezmemek için owner gider.
       unawaited(_push(action: 'update'));
     });
 
     _watchKeepAliveTimer?.cancel();
-    // Watch workout düştüyse / saat uzağa düştüyse yeniden uyandır.
     _watchKeepAliveTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       unawaited(_ensureWatchWorkoutAlive());
     });
@@ -95,12 +102,13 @@ class WatchSessionSync {
 
   Future<void> _ensureWatchWorkoutAlive() async {
     if (!session.isRecording) return;
+    // Saat asılken telefonda workout'u zorla yeniden başlatma.
+    if (session.isWatchPrimary) return;
     final status = await WatchBridge.getStatus();
     session.setWatchReachable(status.isConnected);
     if (!status.isConnected) {
       await WatchBridge.launchWatchWorkout(session.activityType ?? 'Koşu');
-      // Bağlantı gelince start payload tekrar gitsin.
-      await _push(action: 'start');
+      await _push(action: 'update');
     }
   }
 
@@ -117,6 +125,7 @@ class WatchSessionSync {
       elapsedSeconds: session.elapsed.inSeconds,
       distanceMeters: session.effectiveDistanceMeters,
       isRecording: session.isRecording || action == 'start',
+      sessionOwner: session.origin?.name,
       latitude: last?.latitude,
       longitude: last?.longitude,
       heartRateBpm: session.heartRateBpm,
@@ -124,24 +133,83 @@ class WatchSessionSync {
     );
   }
 
+  Future<void> _adoptFromWatch(
+    Map<String, dynamic> payload, {
+    bool announce = false,
+  }) async {
+    // Telefon asılken saatten gelen start/sync kayıt çalmasın; sadece health uygula.
+    if (session.isPhonePrimary && session.isRecording) {
+      session.applyWatchHealth(payload);
+      session.setWatchReachable(true);
+      await _push(action: 'update');
+      return;
+    }
+
+    final type = payload['activityType'] as String? ?? 'Koşu';
+    final startedNow = await session.adoptWatchSnapshot(payload);
+    session.setWatchReachable(true);
+    if (startedNow) {
+      session.minimize();
+      if (announce) {
+        await WatchBridge.notifyLocal(
+          title: 'Runny',
+          body: '$type saatten başladı — saat asıl kaynak.',
+        );
+      }
+    }
+    if (session.isRecording) {
+      await _push(action: 'update');
+    }
+  }
+
   Future<void> _onWatchEvent(WatchEvent event) async {
     switch (event.type) {
       case WatchEventType.startRequested:
+        if (session.isPhonePrimary && session.isRecording) {
+          // Telefon zaten asıl — saatin start'ı yok say / health al.
+          session.applyWatchHealth(event.payload);
+          break;
+        }
         final type = event.payload['activityType'] as String? ?? 'Koşu';
         if (!session.isRecording) {
-          final ok = await session.start(type);
-          debugPrint('Watch start → phone: $ok');
+          final ok = await session.start(
+            type,
+            origin: ActivitySessionOrigin.watch,
+            announceToWatch: false,
+          );
+          debugPrint('Watch start → phone (watch primary): $ok type=$type');
           if (ok) {
+            await session.adoptWatchSnapshot({
+              ...event.payload,
+              'isRecording': true,
+            });
             session.minimize();
-            await notifyStarted();
+            await _push(action: 'update');
             await WatchBridge.notifyLocal(
               title: 'Runny',
-              body: '$type saatten başladı — canlı kayıt açık.',
+              body: '$type saatten başladı — saat asıl kaynak.',
             );
           }
+        } else {
+          await _adoptFromWatch(event.payload);
         }
+      case WatchEventType.sync:
+        await _adoptFromWatch(
+          event.payload,
+          announce: !session.isRecording,
+        );
+      case WatchEventType.healthUpdate:
+        await _adoptFromWatch(event.payload);
       case WatchEventType.stopRequested:
+        // Stop her iki taraftan da geçerli.
         if (session.isRecording || session.hasActiveSession) {
+          session.applyWatchHealth(event.payload);
+          final watchElapsed = event.payload['elapsedSeconds'];
+          if (watchElapsed is num && session.isWatchPrimary) {
+            session.setElapsedFromWatchPrimary(watchElapsed.round());
+          } else if (watchElapsed is num) {
+            session.catchUpElapsedFromWatch(watchElapsed.round());
+          }
           await session.stop(save: true);
           await notifyStopped();
           await WatchBridge.notifyLocal(
@@ -149,16 +217,11 @@ class WatchSessionSync {
             body: 'Aktivite saatten bitirildi.',
           );
         }
-      case WatchEventType.healthUpdate:
-        session.applyWatchHealth(event.payload);
-        session.setWatchReachable(true);
-        // Live Activity metriklerini hemen tazele.
-        if (session.isRecording) {
-          await _push(action: 'update');
-        }
       case WatchEventType.statusChanged:
         await _refreshWatchStatus();
-        if (session.isRecording && !session.watchReachable) {
+        if (session.isRecording &&
+            session.isPhonePrimary &&
+            !session.watchReachable) {
           unawaited(_ensureWatchWorkoutAlive());
         }
       case WatchEventType.pauseRequested:

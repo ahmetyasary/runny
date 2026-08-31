@@ -64,6 +64,7 @@ class WatchBridge {
     required int elapsedSeconds,
     required double distanceMeters,
     bool isRecording = true,
+    String? sessionOwner,
     double? latitude,
     double? longitude,
     double? heartRateBpm,
@@ -78,6 +79,7 @@ class WatchBridge {
         'elapsedSeconds': elapsedSeconds,
         'distanceMeters': distanceMeters,
         'isRecording': isRecording,
+        'sessionOwner': ?sessionOwner,
         'updatedAt': DateTime.now().toUtc().toIso8601String(),
         'latitude': ?latitude,
         'longitude': ?longitude,
@@ -118,6 +120,24 @@ class WatchBridge {
       debugPrint('notifyLocal failed: ${error.message}');
     } on MissingPluginException {}
   }
+
+  /// Son aktiviteleri saate gönder (özet; rota noktası yok).
+  static Future<void> syncRecentActivities(
+    List<Map<String, dynamic>> activities,
+  ) async {
+    ensureListening();
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    try {
+      await channel.invokeMethod('syncRecentActivities', {
+        'type': 'recentActivities',
+        'action': 'recentActivities',
+        'activities': activities,
+        'updatedAt': DateTime.now().toUtc().toIso8601String(),
+      });
+    } on PlatformException catch (error) {
+      debugPrint('syncRecentActivities failed: ${error.message}');
+    } on MissingPluginException {}
+  }
 }
 
 enum WatchEventType {
@@ -126,6 +146,7 @@ enum WatchEventType {
   pauseRequested,
   resumeRequested,
   healthUpdate,
+  sync,
   statusChanged,
   unknown,
 }
@@ -147,6 +168,7 @@ class WatchEvent {
       'pause' => WatchEventType.pauseRequested,
       'resume' => WatchEventType.resumeRequested,
       'health' => WatchEventType.healthUpdate,
+      'sync' => WatchEventType.sync,
       'status' => WatchEventType.statusChanged,
       _ => WatchEventType.unknown,
     };

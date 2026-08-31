@@ -52,6 +52,10 @@ import UserNotifications
         let args = call.arguments as? [String: Any] ?? [:]
         Self.endLive(from: args)
         result(nil)
+      case "syncRecentActivities":
+        let args = call.arguments as? [String: Any] ?? [:]
+        WatchConnectivityManager.shared.syncRecentActivities(args)
+        result(nil)
       case "notifyLocal":
         let args = call.arguments as? [String: Any] ?? [:]
         let title = args["title"] as? String ?? "Runny"
@@ -183,6 +187,24 @@ final class WatchConnectivityManager: NSObject, WCSessionDelegate {
       }
     } else {
       session.transferUserInfo(payload)
+    }
+  }
+
+  func syncRecentActivities(_ payload: [String: Any]) {
+    guard let session, session.activationState == .activated else { return }
+
+    var envelope = payload
+    envelope["type"] = "recentActivities"
+    envelope["action"] = "recentActivities"
+
+    // applicationContext oturum paketini ezmesin; mesaj + userInfo kullan.
+    if session.isReachable {
+      session.sendMessage(envelope, replyHandler: nil) { error in
+        NSLog("Runny recentActivities send error: \(error.localizedDescription)")
+        session.transferUserInfo(envelope)
+      }
+    } else {
+      session.transferUserInfo(envelope)
     }
   }
 
